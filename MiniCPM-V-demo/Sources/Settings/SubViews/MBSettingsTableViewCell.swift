@@ -144,10 +144,7 @@ class MBSettingsTableViewCell: UITableViewCell {
             accessoryImageView.isHidden = true
             statusLabel.isHidden = true
             switchControl.isHidden = false
-            
-            // 从 UserDefaults 读取开关状态
-            let isEnabled = UserDefaults.standard.bool(forKey: "realtime_understanding_enabled")
-            switchControl.isOn = isEnabled
+            switchControl.isOn = model.switchIsOn
         } else {
             // 普通类型的 cell（如模型选择）
             switchControl.isHidden = true

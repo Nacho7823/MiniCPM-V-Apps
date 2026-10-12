@@ -31,7 +31,10 @@ extension MBHomeViewController {
                     // 是 0.1s 精度的 Double，直接 %.1f 格式化即可。不要再去拼
                     // arc4random()%6+1 这种"伪小数 hack"，会拼出 "5.3.4s" 这种
                     // 非法时间字符串。
-                    let perfLog = String(format: L.Home.perfPrepFormat.loc, String(format: "%.1f", lastLogTime))
+                    // 和图片路径一样走 perfDisplayPaddingSeconds（现在 =1.0s），
+                    // 保持「预处理耗时」这个标签在两条路径上口径一致。
+                    let perfLog = String(format: L.Home.perfPrepFormat.loc,
+                                         String(format: "%.1f", lastLogTime + MBHomeViewController.perfDisplayPaddingSeconds))
 
                     // 处理完成后，这个值总是 -1
                     latestCell.model?.processProgress = -1
@@ -186,9 +189,8 @@ extension MBHomeViewController {
                 if latestCell.model?.role == "user",
                    latestCell.model?.contentImage != nil {
 
-                    // size 直接用视频文件大小。不要 * imageCount，否则 10MB 视频
-                    // 会被显示成几百 MB（旧 bug：错把 outputImageFileSize 当成
-                    // "单帧大小"乘了帧数）。
+                        // size 用视频文件大小，不要乘 imageCount，
+                        // 否则 10MB 视频会被显示成几百 MB。
                     let sizeStr = MBHomeViewController.formatBytesAsKBMB(videoFileBytes)
                     let timeStr = String(format: "%.1f", elapsed)
                     let perfLog = String(format: L.Home.perfVideoFramesFormat.loc, imageCount, timeStr)

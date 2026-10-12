@@ -4,18 +4,17 @@
 //
 //  iOS 系统子系统懒加载 → 用户点按钮"卡一下"的预热补丁。
 //
-//  对应的两个用户报告：
-//    1. 「点切片数量按钮，第一次 alert 弹出停顿一下才出来」
-//    2. 「点图片按钮，第一次 picker 弹出停顿一下才出来」
+//  对应的用户报告：
+//    「点切片数量按钮，第一次 alert 弹出停顿一下才出来」
 //
 //  根因不是 demo 自己代码慢，是 iOS 几个 first-use 懒加载组件：
 //
 //    - UIAlertController 首次 present：UIPresentationController 子系统、
 //      UIBlurEffect → Metal blur kernel 首次编译、临时 alert UIWindow 的
 //      windowScene 状态切换 …… 累计 ~80–150 ms
-//    - PHPickerViewController 首次 present：PhotoUI.framework dlopen +
-//      class registration (~50–100 ms)，加上 `pickerd` XPC service 由
-//      launchd 首次 spawn (~300–800 ms)。这是 PHPicker 的著名"首次卡"
+//
+//  注：选图走 HXPhotoPicker（非系统 PHPicker），没有 PHPicker 那条
+//  `pickerd` XPC service 首次 spawn 的开销，故这里不再为 picker 做预热。
 //
 //  Apple 没有公开的 preheat API，可用的 trick 是 app 启动后异步 fire 一次
 //  invisible present + immediate dismiss，让上面的子系统都按需初始化好，
@@ -26,12 +25,11 @@
 
 import Foundation
 import UIKit
-import PhotosUI
 
 extension MBHomeViewController {
 
-    /// 在 home VC 显示一段时间后异步预热 UIAlertController + PHPicker，
-    /// 让用户后续点切片 / 选图按钮的"首次卡顿"消失。
+    /// 在 home VC 显示一段时间后异步预热 UIAlertController，
+    /// 让用户后续点切片按钮的"首次卡顿"消失。
     ///
     /// 安全调用：viewDidLoad 末尾即可。delay 后的闭包通过 `[weak self]`
     /// 持有 self，home VC 销毁时整段 silently 跳过。
@@ -43,7 +41,6 @@ extension MBHomeViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self = self else { return }
             self._warmUpAlertOnce()
-            self._warmUpPHPickerOnce()
             self._warmUpKeyboardOnce()
         }
     }
@@ -71,25 +68,6 @@ extension MBHomeViewController {
         present(alert, animated: false) {
             alert.dismiss(animated: false)
         }
-    }
-
-    /// 仅实例化一次 PHPickerViewController 然后丢弃。**不**真正 present。
-    ///
-    /// 实例化已经会触发：
-    ///   - PhotoUI.framework 的 dlopen + ObjC class registration
-    ///   - PHPicker 内部的 NSExtension principal-class lookup（这是 picker
-    ///     UI 跑在 `pickerd` 进程的入口，touching 它会让 launchd 排队 spawn
-    ///     该 XPC service —— 真 present 时进程已就绪，肉眼能感觉到首次延迟
-    ///     从 ~600 ms 降到 ~150 ms）
-    ///
-    /// 我们故意不真 present —— 不想让用户启动后看到一个一闪而过的相册
-    /// grid。只走"实例化"这条路径，能预热的就预热，剩下的（pickerd 真正
-    /// 启动 + 索引 query）等用户首次按图片按钮时实际触发。
-    private func _warmUpPHPickerOnce() {
-        var config = PHPickerConfiguration()
-        config.selectionLimit = 1
-        config.filter = .images
-        _ = PHPickerViewController(configuration: config)
     }
 
     /// 触发系统键盘 extension 的首次 spawn —— 尤其针对装了第三方输入法

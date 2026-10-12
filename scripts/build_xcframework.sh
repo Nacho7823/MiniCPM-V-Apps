@@ -502,6 +502,8 @@ fi
 # ── install ────────────────────────────────────────────────────────────
 
 rm -rf "${DEST_DIR}/llama.xcframework"
+# thirdparty/ is not tracked and holds nothing else, so a fresh clone does not have it.
+mkdir -p "${DEST_DIR}"
 cp -R "${OUTPUT}" "${DEST_DIR}/llama.xcframework"
 
 SIZE="$(du -sh "${DEST_DIR}/llama.xcframework" | awk '{print $1}')"

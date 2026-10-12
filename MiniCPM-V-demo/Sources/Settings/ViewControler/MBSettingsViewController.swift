@@ -71,6 +71,22 @@ import llama
                                                object: nil)
     }
 
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showCacheWindowRevertNoticeIfNeeded()
+    }
+
+    /// 若上次启动因缓存设得过大而回退，这里告知用户 —— 回退是静默发生的。
+    private func showCacheWindowRevertNoticeIfNeeded() {
+        guard let attempted = MiniCPMV47Const.consumeCacheWindowRevertNotice() else { return }
+        let alert = UIAlertController(
+            title: L.Settings.cacheWindowRevertedTitle.loc,
+            message: String(format: L.Settings.cacheWindowRevertedBody.loc, "\(attempted)"),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default))
+        present(alert, animated: true)
+    }
+
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
@@ -224,7 +240,18 @@ extension MBSettingsViewController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         
         let model = dataArray[indexPath.section][indexPath.row]
-        
+        if model.isSwitchEnabled {
+            // 开关型 cell：整行点击给一条说明（DSpark 开关不在当前会话内生效）。
+            if model.title == L.Settings.rowDspark.loc {
+                let alert = UIAlertController(title: L.Settings.rowDspark.loc,
+                                              message: L.Settings.dsparkHint.loc,
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: L.Common.gotIt.loc, style: .default))
+                present(alert, animated: true)
+            }
+            return
+        }
+
         switch indexPath.section {
         case 0, 1, 2: // 多模态 / 语言 / TTS 模型
             handleModelSelection(model: model, at: indexPath)
@@ -282,10 +309,93 @@ extension MBSettingsViewController: UITableViewDelegate {
             } else if title == MiniCPMModelConst.voxcpm2_DisplayedName {
                 let detailVC = MBVoxcpm2ModelDetailViewController(with: mtmdWrapperExample)
                 self.navigationController?.pushViewController(detailVC, animated: true)
+            } else if title == MiniCPMV47Const.displayedName {
+                self.selectV47MoE()
+            } else if title == MiniCPMV47_1BConst.displayedName {
+                self.selectV47_1B()
             }
         }
     }
-    
+
+    /// MiniCPM-V 4.7 1B：权重由本地脚本推送，App 不做下载。
+    /// 本地文件在就直接选中（下次加载走 `.V47_1B` 分支）；不在就提示怎么放。
+    private func selectV47_1B() {
+        guard MiniCPMV47_1BConst.filesExist else {
+            let alert = UIAlertController(
+                title: MiniCPMV47_1BConst.displayedName,
+                message: "本地还没有 1B 权重。请把 \(MiniCPMV47_1BConst.modelFileName) 与 "
+                    + "\(MiniCPMV47_1BConst.mmprojFileName) 放进 "
+                    + "Documents/\(MiniCPMV47_1BConst.documentsDirName)/（用 pymobiledevice3 apps push 推送）。",
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default))
+            present(alert, animated: true)
+            return
+        }
+        UserDefaults.standard.setValue(MiniCPMV47_1BConst.userDefaultsKey, forKey: "current_selected_model")
+        mtmdWrapperExample?.currentUsingModelType = .V47_1B
+        NotificationCenter.default.post(name: .mbModelSelectionChanged, object: nil)
+        loadTableViewData()
+    }
+
+    private func selectV47MoE() {
+        // 先看本地：文件齐全就直接进选择流程。缺文件只提示，不在 App 内下载。
+        let artifacts = MiniCPMV47Const.resolveArtifacts()
+        if let artifacts {
+            let problems = MiniCPMV47Const.expertsProblems(at: artifacts.expertsURL)
+            if problems.isEmpty {
+                presentV47SlotBankPicker(
+                    title: MiniCPMV47Const.displayedName,
+                    message: "模型已在本地。拖动滑条选择 slot bank。"
+                )
+                return
+            }
+            print("MiniCPMV47Const: experts 校验失败 \(problems.count) 个文件：\n"
+                  + problems.map { "  - " + $0.text }.joined(separator: "\n"))
+            let alert = UIAlertController(
+                title: "experts 不完整",
+                message: problems.prefix(3).map { $0.text }.joined(separator: "\n")
+                    + (problems.count > 3 ? "\n…共 \(problems.count) 个文件" : "")
+                    + "\n\n请重新安装模型文件（experts 与主模型必须同批）。",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .cancel))
+            present(alert, animated: true)
+            return
+        }
+
+        // 本地没有模型：提示需要先安装（公网下载待接入）。
+        let alert = UIAlertController(
+            title: MiniCPMV47Const.displayedName,
+            message: "本地没有模型文件。请先把 gguf + mmproj + experts 放入 \(MiniCPMV47Const.documentsDirName)/。",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func presentV47SlotBankPicker(title: String, message: String) {
+        let box = MBSlotBankSliderBox(frame: CGRect(x: 0, y: 0, width: 270, height: 72))
+        let host = UIViewController()
+        host.view = box
+        host.preferredContentSize = CGSize(width: 270, height: 72)
+
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.setValue(host, forKey: "contentViewController")
+        alert.addAction(UIAlertAction(title: "使用", style: .default) { [weak self] _ in
+            self?.activateV47(slotBank: box.bank)
+        })
+        alert.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func activateV47(slotBank: Int) {
+        MiniCPMV47Const.setSlotBank(slotBank)
+        UserDefaults.standard.setValue(MiniCPMV47Const.userDefaultsKey, forKey: "current_selected_model")
+        mtmdWrapperExample?.currentUsingModelType = .V47MoE
+        NotificationCenter.default.post(name: .mbModelSelectionChanged, object: nil)
+        loadTableViewData()
+    }
+
     private func handleFeatureSelection(model: MBSettingsModel, at indexPath: IndexPath) {
         // 处理功能设置逻辑。
         // 注意：用 .loc 后的字符串比较，意味着用户在英文环境下点 "Language"
@@ -293,6 +403,12 @@ extension MBSettingsViewController: UITableViewDelegate {
         guard let title = model.title else { return }
         if title == L.Settings.rowLanguage.loc {
             showLanguagePicker()
+        } else if title == L.Settings.rowLookaheadPrefetchDepth.loc {
+            presentLookaheadPrefetchDepthPicker()
+        } else if title == L.Settings.rowCacheWindow.loc {
+            presentCacheWindowPicker()
+        } else if title == L.Settings.rowPrewarm.loc {
+            presentPrewarmPicker()
         } else if title == L.Realtime.title.loc {
             showRealtimeUnderstandingPage()
         }
@@ -306,8 +422,88 @@ extension MBSettingsViewController: UITableViewDelegate {
         }
     }
 
-    /// 弹 ActionSheet 让用户在中文 / English 之间二选一。
-    /// 选好后调 LocalizationManager.setLanguage()，会通过通知触发本页 + 已打开
+    private func presentLookaheadPrefetchDepthPicker() {
+        let box = MBLookaheadPrefetchDepthSliderBox(frame: CGRect(x: 0, y: 0, width: 270, height: 88))
+        let host = UIViewController()
+        host.view = box
+        host.preferredContentSize = CGSize(width: 270, height: 88)
+
+        let alert = UIAlertController(
+            title: L.Settings.lookaheadPrefetchDepthTitle.loc,
+            message: L.Settings.lookaheadPrefetchDepthMessage.loc,
+            preferredStyle: .alert
+        )
+        alert.setValue(host, forKey: "contentViewController")
+        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default) { [weak self] _ in
+            self?.mtmdWrapperExample?.setMoeLookaheadPrefetchDepth(box.depth)
+            self?.loadTableViewData()
+        })
+        alert.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
+        present(alert, animated: true)
+    }
+
+    /// 缓存槽数 c 选择器。改完需重载模型才生效。
+    private func presentCacheWindowPicker() {
+        let box = MBCacheWindowSliderBox(frame: CGRect(x: 0, y: 0, width: 270, height: 88))
+        let host = UIViewController()
+        host.view = box
+        host.preferredContentSize = CGSize(width: 270, height: 88)
+
+        let alert = UIAlertController(
+            title: L.Settings.cacheWindowTitle.loc,
+            message: L.Settings.cacheWindowMessage.loc,
+            preferredStyle: .alert
+        )
+        alert.setValue(host, forKey: "contentViewController")
+        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default) { [weak self] _ in
+            MiniCPMV47Const.setCacheWindowC(box.c)
+            self?.loadTableViewData()
+        })
+        alert.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
+        present(alert, animated: true)
+    }
+
+    /// 缓存预热档位选择器（关 / 8 / 16 / 32 / 48 / 64）。改完需重载模型才生效。
+    /// 用 ActionSheet 而不是滑条：档位是离散的，且只有 5 档。
+    private func presentPrewarmPicker() {
+        let alert = UIAlertController(title: L.Settings.prewarmTitle.loc,
+                                      message: L.Settings.prewarmMessage.loc,
+                                      preferredStyle: .actionSheet)
+        let current = MiniCPMV47Const.prewarmLevel()
+
+        let off = UIAlertAction(title: current <= 0 ? "\(L.Settings.prewarmOff.loc)  ✓"
+                                                    : L.Settings.prewarmOff.loc,
+                                style: .default) { [weak self] _ in
+            MiniCPMV47Const.setPrewarmLevel(0)
+            self?.loadTableViewData()
+        }
+        alert.addAction(off)
+
+        for level in MiniCPMV47Const.prewarmLevelsForDevice() {
+            let title = level == current ? "\(level)  ✓" : "\(level)"
+            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+                MiniCPMV47Const.setPrewarmLevel(level)
+                self?.loadTableViewData()
+            })
+        }
+        alert.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
+
+        // iPad action sheet 必须 anchor 到 sourceView 否则 crash（同语言选择器）。
+        if let pop = alert.popoverPresentationController {
+            pop.sourceView = self.view
+            if let idx = tableView.indexPathForSelectedRow,
+               let cell = tableView.cellForRow(at: idx) {
+                pop.sourceView = cell
+                pop.sourceRect = cell.bounds
+            } else {
+                pop.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
+                pop.permittedArrowDirections = []
+            }
+        }
+        present(alert, animated: true)
+    }
+
+    /// 弹 ActionSheet 让用户在中文 / English 之间二选一。    /// 选好后调 LocalizationManager.setLanguage()，会通过通知触发本页 + 已打开
     /// 的其它 VC 全部 reload，无需重启 app。
     private func showLanguagePicker() {
         let alert = UIAlertController(title: L.LanguagePicker.title.loc,
@@ -445,6 +641,49 @@ extension MBSettingsViewController {
         }
         
         section.append(model3)
+
+        let qwen = MBSettingsModel()
+        qwen.title = MiniCPMV47Const.displayedName
+        qwen.icon = UIImage(systemName: "cpu")
+        qwen.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        qwen.selectedIcon = UIImage(systemName: "checkmark.circle.fill")
+        if MiniCPMV47Const.resolveArtifacts() != nil && currentSelectedModel == MiniCPMV47Const.userDefaultsKey {
+            qwen.status = "selected"
+            if mtmdWrapperExample?.multiModelLoadingSuccess == true {
+                qwen.statusString = L.Settings.statusInUse.loc
+            } else {
+                qwen.statusString = "待加载"
+            }
+        } else if MiniCPMV47Const.resolveArtifacts() != nil {
+            qwen.status = "none"
+            qwen.statusString = "已下载"
+        } else {
+            qwen.status = "none"
+            qwen.statusString = "点此安装"
+        }
+        section.append(qwen)
+
+        // MiniCPM-V 4.7 1B（dense）。权重靠本地脚本推送，App 不做下载，
+        // 所以这里只反映「本地文件在不在」。
+        let v47_1b = MBSettingsModel()
+        v47_1b.title = MiniCPMV47_1BConst.displayedName
+        v47_1b.icon = UIImage(systemName: "cpu")
+        v47_1b.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        v47_1b.selectedIcon = UIImage(systemName: "checkmark.circle.fill")
+        if MiniCPMV47_1BConst.filesExist {
+            if currentSelectedModel == MiniCPMV47_1BConst.userDefaultsKey {
+                v47_1b.status = "selected"
+                v47_1b.statusString = mtmdWrapperExample?.multiModelLoadingSuccess == true
+                    ? L.Settings.statusInUse.loc : "待加载"
+            } else {
+                v47_1b.status = "none"
+                v47_1b.statusString = "已就位"
+            }
+        } else {
+            v47_1b.status = "none"
+            v47_1b.statusString = "点此查看如何放入文件"
+        }
+        section.append(v47_1b)
         
         dataArray.append(section)
     }
@@ -532,6 +771,86 @@ extension MBSettingsViewController {
         langModel.detailText = LocalizationManager.shared.currentLanguage.displayName
         section.append(langModel)
 
+        let lookaheadPrefetchModel = MBSettingsModel()
+        lookaheadPrefetchModel.title = L.Settings.rowLookaheadPrefetchDepth.loc
+        lookaheadPrefetchModel.icon = UIImage(systemName: "arrow.down.circle")
+        lookaheadPrefetchModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        lookaheadPrefetchModel.detailText = {
+            let n = MiniCPMV47Const.lookaheadPrefetchDepth()
+            return n == 0 ? L.Settings.lookaheadPrefetchDepthOff.loc : "\(n)"
+        }()
+        section.append(lookaheadPrefetchModel)
+
+        // 每层缓存槽数 c，改完需重载模型。
+        let cacheWindowModel = MBSettingsModel()
+        cacheWindowModel.title = L.Settings.rowCacheWindow.loc
+        cacheWindowModel.icon = UIImage(systemName: "internaldrive")
+        cacheWindowModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        cacheWindowModel.detailText = {
+            let c = MiniCPMV47Const.cacheWindowC()
+            if c <= 0 { return "关" }
+            return "\(c)（\(Int(MiniCPMV47Const.cacheWindowCoverage(c) * 100))%）"
+        }()
+        section.append(cacheWindowModel)
+
+        // 缓存预热档位（每层预读多少个开头常用专家）。改完需重载模型。
+        let prewarmModel = MBSettingsModel()
+        prewarmModel.title = L.Settings.rowPrewarm.loc
+        prewarmModel.icon = UIImage(systemName: "flame")
+        prewarmModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        prewarmModel.detailText = {
+            let n = MiniCPMV47Const.prewarmLevel()
+            return n <= 0 ? L.Settings.prewarmOff.loc : "\(n)"
+        }()
+        section.append(prewarmModel)
+
+        // 显示 P/D 速度：拨一下即时生效（只控制工具条上那行文字是否显示，不影响推理）。
+        let showPerfSpeedModel = MBSettingsModel()
+        showPerfSpeedModel.title = L.Settings.rowShowPerfSpeed.loc
+        showPerfSpeedModel.icon = UIImage(systemName: "speedometer")
+        showPerfSpeedModel.isSwitchEnabled = true
+        showPerfSpeedModel.switchIsOn = MiniCPMV47Const.showPerfSpeedEnabled()
+        showPerfSpeedModel.switchValueChanged = { [weak self] on in
+            MiniCPMV47Const.setShowPerfSpeedEnabled(on)
+            // 广播给主页：让它把已渲染回复上的速度文案一起刷新（否则要等下一轮生成才变）。
+            NotificationCenter.default.post(name: .mbPerfSpeedVisibilityChanged, object: nil)
+            DispatchQueue.main.async { self?.loadTableViewData() }
+        }
+        section.append(showPerfSpeedModel)
+
+        // 实时渲染 Markdown 开关：**当前隐藏**（暂时不暴露该入口，代码保留，恢复时解注释即可）。
+        // 默认关（流式期间纯文本，整段完成后一次上样式）；打开后走增量解析边生成边上样式，无需重载模型。
+        //
+        // let streamingMarkdownModel = MBSettingsModel()
+        // streamingMarkdownModel.title = L.Settings.rowStreamingMarkdown.loc
+        // streamingMarkdownModel.icon = UIImage(systemName: "textformat")
+        // streamingMarkdownModel.isSwitchEnabled = true
+        // streamingMarkdownModel.switchIsOn = MiniCPMV47Const.streamingMarkdownEnabled()
+        // streamingMarkdownModel.switchValueChanged = { [weak self] on in
+        //     MiniCPMV47Const.setStreamingMarkdownEnabled(on)
+        //     DispatchQueue.main.async { self?.loadTableViewData() }
+        // }
+        // section.append(streamingMarkdownModel)
+
+        // DSpark 开关：**当前隐藏**（暂时不暴露该入口，代码保留，恢复时解注释即可）。
+        // 不会立即生效 —— 投机器在模型加载时按这个值建，改完要重载模型；点开这一行会给出提示。
+        //
+        // let dsparkModel = MBSettingsModel()
+        // dsparkModel.title = L.Settings.rowDspark.loc
+        // dsparkModel.icon = UIImage(systemName: "bolt.horizontal.circle")
+        // dsparkModel.isSwitchEnabled = true
+        // dsparkModel.switchIsOn = MiniCPMV47Const.dsparkEnabled()
+        // dsparkModel.switchValueChanged = { [weak self] on in
+        //     MiniCPMV47Const.setDsparkEnabled(on)
+        //     // 异步重建数据源：在当前回调里 reloadData 会把正在发 valueChanged 的
+        //     // UISwitch 连同 cell 一起拆掉。这一行同时刷新上面「预读专家数」的显示值。
+        //     DispatchQueue.main.async {
+        //         self?.loadTableViewData()
+        //         if on { self?.offerDsparkDraftDownloadIfMissing() }
+        //     }
+        // }
+        // section.append(dsparkModel)
+
         dataArray.append(section)
     }
     
@@ -573,6 +892,10 @@ extension MBSettingsViewController {
             mtmdWrapperExample?.currentUsingModelType = .V526TextModel
         } else if currentSelectedModel == "Voxcpm2Model" {
             mtmdWrapperExample?.currentUsingModelType = .Voxcpm2Model
+        } else if currentSelectedModel == MiniCPMV47Const.userDefaultsKey {
+            mtmdWrapperExample?.currentUsingModelType = .V47MoE
+        } else if currentSelectedModel == MiniCPMV47_1BConst.userDefaultsKey {
+            mtmdWrapperExample?.currentUsingModelType = .V47_1B
         }
         
         // 完整重建数据源（loadTableViewData 内部 removeAll + append）
@@ -580,6 +903,219 @@ extension MBSettingsViewController {
         
         if let currentType = mtmdWrapperExample?.currentUsingModelType {
             updateUsingModeltype?(currentType)
+        }
+    }
+}
+
+/// Slot bank 滑条。步进 8，范围 [minSlotBank, maxSlotBank]
+private final class MBSlotBankSliderBox: UIView {
+    private(set) var bank: Int
+
+    private let valueLabel = UILabel()
+    private let slider = UISlider()
+    private let hintLabel = UILabel()
+
+    override init(frame: CGRect) {
+        bank = MiniCPMV47Const.slotBank()
+        super.init(frame: frame)
+        backgroundColor = .clear
+
+        valueLabel.textAlignment = .center
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
+        valueLabel.textColor = .label
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        slider.minimumValue = Float(MiniCPMV47Const.minSlotBank)
+        slider.maximumValue = Float(MiniCPMV47Const.maxSlotBank)
+        slider.value = Float(bank)
+        slider.isContinuous = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.addTarget(self, action: #selector(changed), for: .valueChanged)
+
+        hintLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 2
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(valueLabel)
+        addSubview(slider)
+        addSubview(hintLabel)
+        NSLayoutConstraint.activate([
+            valueLabel.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
+            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 4),
+            hintLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            hintLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+        ])
+        refreshLabels()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func changed() {
+        bank = MiniCPMV47Const.clampSlotBank(Int(slider.value.rounded()))
+        slider.setValue(Float(bank), animated: false)
+        refreshLabels()
+    }
+
+    private func refreshLabels() {
+        valueLabel.text = "slot bank = \(bank)"
+        hintLabel.text = "全层共用 expert 槽（步进 \(MiniCPMV47Const.slotBankStep)）。256 格约 0.5 GiB，不超过旧的每层 32 格。"
+    }
+}
+
+/// 跳层专家预读深度滑条。范围 [0, 16]，0 = 关闭预测和预读。
+private final class MBLookaheadPrefetchDepthSliderBox: UIView {
+    private(set) var depth: Int
+
+    private let valueLabel = UILabel()
+    private let slider = UISlider()
+    private let hintLabel = UILabel()
+
+    override init(frame: CGRect) {
+        depth = MiniCPMV47Const.lookaheadPrefetchDepth()
+        super.init(frame: frame)
+        backgroundColor = .clear
+
+        valueLabel.textAlignment = .center
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
+        valueLabel.textColor = .label
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        slider.minimumValue = Float(MiniCPMV47Const.minLookaheadPrefetchDepth)
+        slider.maximumValue = Float(MiniCPMV47Const.maxLookaheadPrefetchDepth)
+        slider.value = Float(depth)
+        slider.isContinuous = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.addTarget(self, action: #selector(changed), for: .valueChanged)
+
+        hintLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 2
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.text = L.Settings.lookaheadPrefetchDepthHint.loc
+
+        addSubview(valueLabel)
+        addSubview(slider)
+        addSubview(hintLabel)
+        NSLayoutConstraint.activate([
+            valueLabel.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
+            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 4),
+            hintLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            hintLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+        ])
+        refreshLabels()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func changed() {
+        depth = MiniCPMV47Const.clampLookaheadPrefetchDepth(Int(slider.value.rounded()))
+        slider.setValue(Float(depth), animated: false)
+        refreshLabels()
+    }
+
+    private func refreshLabels() {
+        if depth == 0 {
+            valueLabel.text = L.Settings.lookaheadPrefetchDepthOff.loc
+        } else {
+            valueLabel.text = "\(depth)"
+        }
+    }
+}
+
+/// 每层缓存槽数 c 的滑条，范围 [0, maxCacheWindowCForDevice()]，步进 8；0 = 关窗口。
+/// 同时显示覆盖率与窗口占用（后者需从 experts 读每 slot 字节）。
+private final class MBCacheWindowSliderBox: UIView {
+    private(set) var c: Int
+
+    private let valueLabel = UILabel()
+    private let slider = UISlider()
+    private let hintLabel = UILabel()
+
+    override init(frame: CGRect) {
+        c = MiniCPMV47Const.cacheWindowC()
+        super.init(frame: frame)
+        backgroundColor = .clear
+
+        valueLabel.textAlignment = .center
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
+        valueLabel.textColor = .label
+        valueLabel.numberOfLines = 2
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        slider.minimumValue = Float(MiniCPMV47Const.minCacheWindowC)
+        slider.maximumValue = Float(MiniCPMV47Const.maxCacheWindowCForDevice())
+        slider.value = Float(c)
+        slider.isContinuous = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.addTarget(self, action: #selector(changed), for: .valueChanged)
+
+        hintLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 3
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.text = L.Settings.cacheWindowHint.loc
+
+        addSubview(valueLabel)
+        addSubview(slider)
+        addSubview(hintLabel)
+        NSLayoutConstraint.activate([
+            valueLabel.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
+            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 4),
+            hintLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            hintLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            hintLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+        ])
+        refreshLabels()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func changed() {
+        c = MiniCPMV47Const.clampCacheWindowC(Int(slider.value.rounded()))
+        slider.setValue(Float(c), animated: false)
+        refreshLabels()
+    }
+
+    private func refreshLabels() {
+        if c <= 0 {
+            valueLabel.text = "c=0（关闭窗口）"
+            return
+        }
+        let cov = Int((MiniCPMV47Const.cacheWindowCoverage(c) * 100).rounded())
+        // 窗口内存需从 experts 的每 slot 字节数换算；读不到就只报 c。
+        if let gib = MiniCPMV47Const.windowGiB(
+                forC: c,
+                kSlots: MiniCPMV47Const.decodeWindowPrefetchSlots()) {
+            valueLabel.text = String(format: "c=%d（覆盖 %d%%）\n窗口 %.2f GiB", c, cov, gib)
+        } else {
+            valueLabel.text = "c=\(c)（覆盖 \(cov)%）"
         }
     }
 } 

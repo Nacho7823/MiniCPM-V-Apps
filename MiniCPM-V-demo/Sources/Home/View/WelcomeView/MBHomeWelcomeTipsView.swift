@@ -12,9 +12,14 @@ import SnapKit
 /// 首页 header 用到的 tips view
 class MBHomeWelcomeTipsView: UIView {
     
-    /// 点击事件
+    /// 点击事件。回调的是要发给模型的文本（可以和按钮上显示的短标题不同）。
     public var onTap: ((String?) -> Void)?
 
+    /// 自定义点击动作，非 nil 时优先于 `onTap`（用于「点开还要再选一次」的场景）。
+    public var onTapAction: (() -> Void)?
+
+    /// 真正发送的 prompt；nil 则发送 titleLabel.text
+    private var sendPayload: String?
     /// icon
     lazy var iconImageView: UIImageView = {
         let img = UIImageView()
@@ -33,6 +38,8 @@ class MBHomeWelcomeTipsView: UIView {
             lb.font = UIFont.systemFont(ofSize: 10, weight: .medium)
         }
         lb.textColor = UIColor.mb_color(with: "#1C1C23")
+        lb.lineBreakMode = .byTruncatingTail
+        lb.numberOfLines = 1
         return lb
     }()
     
@@ -66,6 +73,7 @@ class MBHomeWelcomeTipsView: UIView {
             make.centerY.equalTo(self)
             make.height.equalTo(18)
             make.left.equalTo(self.iconImageView.snp.right).offset(8)
+            make.right.lessThanOrEqualTo(-8)
         }
         
         // 增加点击事件
@@ -82,13 +90,20 @@ class MBHomeWelcomeTipsView: UIView {
             self.isUserInteractionEnabled = true
         }
         
-        onTap?(titleLabel.text)
+        // 自定义动作优先（选择器这类要弹菜单的走这条）。
+        if let action = onTapAction {
+            action()
+            return
+        }
+        
+        onTap?(sendPayload ?? titleLabel.text)
     }
     
-    /// 数据绑定
-    public func bindWith(icon: UIImage?, title: String?) {
+    /// 数据绑定。`sendText` 有值时，点击发送它而不是短标题。
+    public func bindWith(icon: UIImage?, title: String?, sendText: String? = nil) {
         self.iconImageView.image = icon
         self.titleLabel.text = title
+        self.sendPayload = sendText
     }
     
 }

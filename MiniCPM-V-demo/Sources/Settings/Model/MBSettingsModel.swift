@@ -31,6 +31,9 @@ class MBSettingsModel: NSObject {
     
     /// 是否启用开关（用于实时理解设置）
     var isSwitchEnabled: Bool = false
+
+    /// 开关当前值。isSwitchEnabled 时由 cell 读取，不再写死 UserDefaults key。
+    var switchIsOn: Bool = false
     
     /// 开关状态改变的回调
     var switchValueChanged: ((Bool) -> Void)?

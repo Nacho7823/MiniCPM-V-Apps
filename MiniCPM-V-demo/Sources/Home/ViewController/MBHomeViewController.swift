@@ -9,11 +9,10 @@ import UIKit
 import SnapKit
 import Combine
 import AVKit
-import PhotosUI
 import llama
 
 /// 首页 VC
-@objc public class MBHomeViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate {
+@objc public class MBHomeViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIGestureRecognizerDelegate {
         
     // MARK: - properties
 
@@ -39,6 +38,13 @@ import llama
     
     /// 是否在插入单张图片到模型中（直接点击「插入图片」按钮，插入一张图片）
     var uploadSingleImageToModel = false
+
+    /// 「预处理耗时」显示时的固定加成（秒）。**图片路径 / 实时录像两处共用**。
+    ///
+    /// eager 编码的计时只覆盖 ViT 那一段，不含读文件 / bitmap 预处理 / tokenize；
+    /// 不让展示值虚高。
+    /// TODO: remove this
+    static let perfDisplayPaddingSeconds: TimeInterval = 1.0
     
     /// 是否在思考中？
     var thinking = false
@@ -59,14 +65,11 @@ import llama
     /// 在富文本编辑器模式下，处理多张图片时，要把图片耗时记下来
     var cachedImageEmbeddingPerfLog = [String: String]()
     
-    /// 缓存"用户从相册选过的视频"的本地路径，key 是 cell 上挂的 imageURL string，value
-    /// 是我们自己 copy 出来的 .mov 路径。
+    /// 缓存"用户从相册选过的视频"的本地路径，key 是 cell 上挂的 imageURL string，
+    /// value 是 HXPhotoPicker 给出的本地视频文件 URL。
     ///
-    /// 早期用 HXPhotoPicker 时，这里存的是 `PhotoAsset`（picker 框架自己的类型，可以
-    /// 直接喂给 `PhotoBrowser.show()`）。换到苹果原生 PHPicker 后我们不再持有
-    /// PHAsset / PhotoAsset，picker 给的临时 URL 在 dismiss 后会失效，所以
-    /// `handleChooseImage` 会把视频 copy 到 caches 目录再把那个路径塞进来。预览时
-    /// 直接 `AVPlayerViewController(player: AVPlayer(url:))` 拉起。
+    /// 预览时直接 `AVPlayerViewController(player: AVPlayer(url:))` 拉起（不再走
+    /// HXPhotoPicker 的 `PhotoBrowser.show()`）。
     var cachedVideoURLs = [String: URL]()
 
     /// 如果选中的视频，则 embed 视频时，时长要按视频抽取的帧数来处理（在 +LogTimer.swift 中使用）
@@ -84,6 +87,13 @@ import llama
     
     // 用于显示 LLM 输出的 cell
     var lastLLMCell: MBTextTableViewCell?
+
+    /// 用户触摸/拖动过表格后置 true，暂停流式自动下拉；
+    /// 用户手动滚回底部、或主动发消息/加图时恢复。
+    var autoScrollPausedByUser = false
+
+    /// 表格底部 inset 在「被输入框盖住的高度」之上多留的余量（pt）。
+    static let kChatBottomGap: CGFloat = 134
 
     /// 首次模型加载是否已经触发。
     ///
@@ -280,9 +290,9 @@ import llama
         // 不再被同步解码挤压。utility QoS 不抢占 init 路径上的 mtmd / Metal 编译。
         MBTutorialContent.prewarmScreenshotsInBackground()
 
-        // 切片 alert + PHPicker 首次拉起的"按了之后停顿一下"延迟根因（详见
+        // 切片 alert 首次拉起的"按了之后停顿一下"延迟根因（详见
         // warmUpSystemPresentations 的 doc comment）：UIKit 系统组件 +
-        // PhotoUI.framework + pickerd XPC service 的懒加载。home VC 显示完之后
+        // UIPresentationController / UIBlurEffect 的懒加载。home VC 显示完之后
         // 1.5s 异步触发一次"隐式 present 立刻 dismiss"，让这些子系统提前 warm。
         // 1.5s 延时是为了让位给模型 init 路径（mtmd_init + Metal kernel 编译），
         // 不抢同一时间窗的 main thread。
@@ -326,6 +336,12 @@ import llama
                                                selector: #selector(handleModelSelectionChanged(_:)),
                                                name: .mbModelSelectionChanged, object: nil)
 
+        // 「显示 P/D 速度」开关变化：把已渲染回复上的速度文案一起刷新。
+        // 不重算 tokens/ms —— 只按新开关值决定「显示上次那串」还是「清空」。
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handlePerfSpeedVisibilityChanged(_:)),
+                                               name: .mbPerfSpeedVisibilityChanged, object: nil)
+
         // 运行时语言切换：刷新本页直接持有的所有可见文案
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(applyLanguage),
@@ -364,6 +380,16 @@ import llama
     /// 不能只判断 multiModelLoadingSuccess，因为切换路径里可能从一个加载好的
     /// 模型切到另一个，wrapper 当前 success 但下次 prefill 走的还是旧 ctx。
     /// 一律 reset + 重置 didStartInitialModelLoad + 立即触发 load。
+    /// 设置页拨了「显示 P/D 速度」：刷新已渲染回复的工具条。
+    ///
+    /// 不动模型里存的 `speedLog`（那是上一轮实测的结果），只在显示时按开关过滤 ——
+    /// 再拨回来还能看到原来的数，不用重新生成。
+    @objc private func handlePerfSpeedVisibilityChanged(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.reloadData()
+        }
+    }
+
     @objc private func handleModelSelectionChanged(_ notification: Notification) {
         debugLog("-->> 模型选择已变更，强制 reset + reload wrapper")
 
@@ -468,6 +494,14 @@ import llama
                 checkMultiModelLoadStatusAndLoadIt()
             }
         }
+    }
+
+    /// 输入框浮在表格上方，底部 inset 必须跟着输入框的实际位置走：
+    /// 键盘弹出时输入框上移、inset 要同步变大，否则自动下拉会把最后一行留在输入框/键盘后面。
+    /// 放在 viewDidLayoutSubviews 里，旋转、键盘、布局变化都能覆盖到。
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateTableBottomInset()
     }
 
     /// support screen rotate
@@ -578,6 +612,8 @@ import llama
                 modelDisplayedName = MiniCPMModelConst.modelv4_Q4_K_M_DisplayedName
             } else if lastSelectedModelString == "V46MultiModel" {
                 modelDisplayedName = MiniCPMModelConst.modelv46_DisplayedName
+            } else if lastSelectedModelString == MiniCPMV47Const.userDefaultsKey {
+                modelDisplayedName = MiniCPMV47Const.displayedName
             } else if lastSelectedModelString == "V5TextModel" {
                 modelDisplayedName = MiniCPMModelConst.modelv5_DisplayedName
             } else if lastSelectedModelString == "V526TextModel" {
@@ -760,6 +796,23 @@ import llama
         let tapDismissKeyboard = UITapGestureRecognizer(target: self, action: #selector(handleResignKeyboard))
         tapDismissKeyboard.cancelsTouchesInView = false
         tableView.addGestureRecognizer(tapDismissKeyboard)
+
+        // 只要手指落到表格上（哪怕没拖动）就暂停流式自动下拉。用 0 时长的
+        // long-press 捕捉 touch-down：cancelsTouchesInView = false 且允许与
+        // scroll pan 同时识别，所以不影响滚动和 cell 点击/选中。
+        let touchPause = UILongPressGestureRecognizer(target: self, action: #selector(handleTableTouchPause))
+        touchPause.minimumPressDuration = 0
+        touchPause.cancelsTouchesInView = false
+        touchPause.delaysTouchesBegan = false
+        touchPause.delegate = self
+        tableView.addGestureRecognizer(touchPause)
+    }
+
+    /// 手指触到表格即暂停自动下拉。
+    @objc func handleTableTouchPause(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            autoScrollPausedByUser = true
+        }
     }
     
     func setupInputView() {
@@ -1180,8 +1233,11 @@ import llama
     }
     
     /// 滚动到底部（流式更新用：不重载整个表格，仅刷新行高）
-    func tableViewScrollToBottom(animated: Bool = true) {
+    /// - Parameter force: true 时忽略「用户触摸暂停」，用户主动发消息/加图时用。
+    func tableViewScrollToBottom(animated: Bool = true, force: Bool = false) {
         guard dataArray.count > 0 else { return }
+        if force { autoScrollPausedByUser = false }
+        guard !autoScrollPausedByUser else { return }
 
         UIView.performWithoutAnimation {
             tableView.beginUpdates()
@@ -1189,35 +1245,84 @@ import llama
         }
         tableView.layoutIfNeeded()
 
-        let contentHeight = tableView.contentSize.height
-        let frameHeight = tableView.bounds.height
-        let bottomInset = tableView.contentInset.bottom
-
-        guard contentHeight > frameHeight else { return }
-
-        let bottomOffset = CGPoint(
-            x: 0,
-            y: contentHeight - frameHeight + bottomInset)
-        tableView.setContentOffset(bottomOffset, animated: animated)
+        scrollToBottomOffset(animated: animated)
     }
 
     /// 新增/删除 cell 后重新加载表格并滚动到底部
-    func reloadAndScrollToBottom(animated: Bool = true) {
+    func reloadAndScrollToBottom(animated: Bool = true, force: Bool = false) {
         guard dataArray.count > 0 else { return }
+        if force { autoScrollPausedByUser = false }
 
         tableView.reloadData()
         tableView.layoutIfNeeded()
 
-        let contentHeight = tableView.contentSize.height
-        let frameHeight = tableView.bounds.height
-        let bottomInset = tableView.contentInset.bottom
+        guard !autoScrollPausedByUser else { return }
+        scrollToBottomOffset(animated: animated)
+    }
 
-        guard contentHeight > frameHeight else { return }
+    /// 真正把 offset 推到最底。
+    ///
+    /// 可滚动条件用「content + bottomInset > frame」，**不是** 原来的
+    /// 「content > frame」——原来要等内容超过整屏高度才开始滚，于是内容在
+    /// （frame − inset, frame] 这段区间时，最后几行已经落到输入框后面了却还不滚，
+    /// 表现为「滚得太晚、文字被输入框挡住」。
+    private func scrollToBottomOffset(animated: Bool) {
+        let maxOffsetY = tableView.contentSize.height
+            + tableView.contentInset.bottom - tableView.bounds.height
+        guard maxOffsetY > 0 else { return }
 
-        let bottomOffset = CGPoint(
-            x: 0,
-            y: contentHeight - frameHeight + bottomInset)
-        tableView.setContentOffset(bottomOffset, animated: animated)
+        tableView.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: animated)
+    }
+
+    /// 表格底部 inset = 被输入框盖住的高度 + 一点余量，保证最后一行停在输入框上方。
+    /// 键盘弹出时输入框会上移，这里跟着变大，自动下拉才不会被键盘挡住。
+    func updateTableBottomInset() {
+        let viewHeight = view.bounds.height
+        guard viewHeight > 0 else { return }
+
+        let covered = max(0, viewHeight - inputContainerView.frame.minY)
+        let newBottom = covered + Self.kChatBottomGap
+        if abs(tableView.contentInset.bottom - newBottom) > 0.5 {
+            tableView.contentInset.bottom = newBottom
+        }
+    }
+
+    /// 表格是否已经停在底部附近（用户手动滚回来后据此恢复自动下拉）。
+    func isChatTableNearBottom(slack: CGFloat = 40) -> Bool {
+        let maxOffsetY = tableView.contentSize.height
+            + tableView.contentInset.bottom - tableView.bounds.height
+        guard maxOffsetY > 0 else { return true }
+        return tableView.contentOffset.y >= maxOffsetY - slack
+    }
+}
+
+extension MBHomeViewController {
+
+    // MARK: - 用户交互时暂停 / 恢复自动下拉
+
+    /// 允许 0 时长 long-press 与 scroll pan、tap 同时识别，互不抢占。
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                  shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        return true
+    }
+
+    public func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        autoScrollPausedByUser = true
+    }
+
+    public func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { resumeAutoScrollIfAtBottom() }
+    }
+
+    public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        resumeAutoScrollIfAtBottom()
+    }
+
+    /// 用户停下时若已回到（接近）底部，就恢复自动下拉。
+    private func resumeAutoScrollIfAtBottom() {
+        if isChatTableNearBottom() {
+            autoScrollPausedByUser = false
+        }
     }
 }
 

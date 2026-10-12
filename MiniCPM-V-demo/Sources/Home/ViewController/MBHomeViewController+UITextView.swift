@@ -27,6 +27,8 @@ extension MBHomeViewController {
                 self.inputContainerView.backgroundColor = UIColor.white.withAlphaComponent(0.02)
                 
                 self.view.layoutIfNeeded()
+                // 输入框上移后同步放大表格底部 inset，避免自动下拉被键盘挡住。
+                self.updateTableBottomInset()
             }
         }
     }
@@ -48,6 +50,8 @@ extension MBHomeViewController {
             self.inputContainerView.backgroundColor = UIColor.white.withAlphaComponent(0)
             
             self.view.layoutIfNeeded()
+            // 输入框落回底部，inset 同步收小。
+            self.updateTableBottomInset()
         }
         
     }

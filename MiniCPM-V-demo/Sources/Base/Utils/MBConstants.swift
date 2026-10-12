@@ -52,4 +52,10 @@ extension Notification.Name {
     /// one-shot `didStartInitialModelLoad` flag swallows the change and
     /// the user sees `[UI]addImage skip: model not loaded yet`.
     static let mbModelSelectionChanged = Notification.Name("com.mb.minicpmv.modelSelectionChanged")
+
+    /// Posted by the settings page when the "show P/D speed" switch is toggled.
+    /// MBHomeViewController listens and re-derives the tool-bar speed text on the
+    /// already-rendered replies, so the switch takes effect immediately instead of
+    /// only on the next generation (the user flips this while recording).
+    static let mbPerfSpeedVisibilityChanged = Notification.Name("com.mb.minicpmv.perfSpeedVisibilityChanged")
 }

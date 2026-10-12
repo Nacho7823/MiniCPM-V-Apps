@@ -69,8 +69,8 @@ extension MBHomeViewController {
                             self.totalVideoFrameCount = 1
                         }
 
-                        // size 直接用源文件字节数（图片是单图大小、视频是 .mov/.mp4 整体大小）。
-                        // 旧 bug：这里曾经 * totalVideoFrameCount，把 10MB 视频显示成 ~640MB。
+            // size 用源文件字节数（图片是单图、视频是 .mov/.mp4 整体）。
+            // 不要再乘 totalVideoFrameCount，那样会把 10MB 视频显示成 ~640MB。
                         let size = MBHomeViewController.formatBytesAsKBMB(self.outputImageFileSize)
 
                         latestCell.model?.performLog = "\(Int(self.outputImageView.image?.size.width ?? 0))x\(Int(self.outputImageView.image?.size.height ?? 0)) (\(size))"

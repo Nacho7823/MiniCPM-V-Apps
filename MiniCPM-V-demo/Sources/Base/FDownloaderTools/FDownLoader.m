@@ -13,26 +13,13 @@
 #define kCachePath NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
 #define kTmpPath NSTemporaryDirectory()
 
-// Build a cache-safe filename for a download URL.
+// Cache filename = md5(full URL) + extension.
 //
-// We MUST NOT use `url.lastPathComponent` as the filename, because some
-// hosting backends (notably ModelScope) put the actual filename in the
-// query string and route every request through a fixed `/repo` path:
-//
-//     https://modelscope.cn/api/v1/models/OpenBMB/MiniCPM-V-4.6-gguf/repo
-//                                                                  ^^^^^^
-//                                  ?Revision=master&FilePath=mmproj-model-f16.gguf
-//
-// `lastPathComponent` for the URL above is "repo", which is the SAME for
-// every ModelScope download in this app — v2.6 / v4 / v4.6 LLMs and
-// mmprojs all collide on `kCachePath/repo` and `kTmpPath/repo`.  When a
-// previous download leaves a partial file behind, the next download sees
-// `_tmpSize > _totalSize` (or worse, equal) in didReceiveResponse and
-// gets stuck in an infinite cancel-and-retry loop.
-//
-// Hashing the full absolute URL gives us a stable, unique-per-URL key
-// while keeping the `<extension>` so debugging via Files.app etc. still
-// shows what the file is.
+// MUST NOT use url.lastPathComponent: ModelScope puts the real filename in the
+// query string and routes everything through a fixed `/repo` path, so all
+// ModelScope downloads would collide on kCachePath/repo and kTmpPath/repo,
+// triggering an infinite cancel-and-retry loop when a partial file is left.
+// Keeping the extension makes Files.app debugging readable.
 static NSString * MBSafeCacheFileName(NSURL *url) {
     NSString *base = [url.absoluteString md5];
     if (base.length == 0) {
@@ -78,41 +65,13 @@ static NSString * MBSafeCacheFileName(NSURL *url) {
 -(NSURLSession *)session {
     if (!_session) {
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-        // Big-model downloads are 0.5–1.5 GiB and take 30–90 s on a fast
-        // domestic mirror.  We need three different timeouts on three
-        // different scopes — collapsing them into one knob always loses:
-        //
-        //   timeoutIntervalForRequest=60   — socket inactivity timeout: kill
-        //                                    a request only after 60 s of NO
-        //                                    bytes flowing.  Generous enough
-        //                                    that a brief LTE / Wi-Fi stall
-        //                                    in the middle of a 1 GiB
-        //                                    download doesn't blow it up.
-        //   timeoutIntervalForResource=0   — no upper bound on TOTAL download
-        //                                    time.  GB-scale downloads on a
-        //                                    7 day default are technically
-        //                                    fine but we make this explicit
-        //                                    so future tuning of the request
-        //                                    timeout above doesn't silently
-        //                                    re-impose a per-resource cap.
-        //
-        // The "wait for first byte" / response timeout is set per-request via
-        // NSURLRequest.timeoutInterval (see -downLoadWithURL:offset:) — we
-        // keep it tighter (~30 s) so that an HF main-mirror that's blocked
-        // by GFW falls back to the ModelScope backup quickly instead of
-        // making the user stare at a stuck UI for two minutes.
+// 三层超时，各有 scope：request=60s（socket 静默，容忍中途抖动）；
+// resource=0（总时长无上限，显式写出以免将来调 request 时误加总量上限）。
+// 「等首字节」按请求设 ~30s（见 downLoadWithURL:offset:），让被墙的 HF 快速回退 MS。
         config.timeoutIntervalForRequest = 60;
         config.timeoutIntervalForResource = 0;
-        // delegateQueue:nil tells NSURLSession to create its own serial
-        // background OperationQueue for all delegate callbacks.  Used to
-        // be `[NSOperationQueue mainQueue]`, which made every
-        // didReceiveData / outputStream-write / progress callback fire on
-        // the main thread — at 25 MB/s of incoming bytes that's ~400
-        // hits/sec hammering UIKit's runloop, and the user feels every
-        // tap take an extra beat to register.  Now downloads run entirely
-        // off-main; the upstream MBModelDownloadHelperV2 callbacks
-        // already wrap their own UI updates in DispatchQueue.main.async
-        // so this swap is contract-compatible.
+// delegateQueue:nil → 回调全在后台串行队列。原来用 mainQueue，25 MB/s 时
+// 每秒 ~400 次轰击 runloop，用户感觉每次点击慢半拍。上游回调自己会切主线程，契约兼容。
         _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
     }
     return _session;
@@ -158,13 +117,7 @@ static NSString * MBSafeCacheFileName(NSURL *url) {
     }
     [self resumeCurrentTask];
     
-    //1.文件的存放
-    //
-    // Use a URL-hashed filename, NOT url.lastPathComponent — see the
-    // MBSafeCacheFileName comment at the top of this file for why.  Two
-    // ModelScope downloads with different ?FilePath= queries used to
-    // collide on `kCachePath/repo` + `kTmpPath/repo` and trigger an
-    // infinite cancel-and-retry loop in didReceiveResponse.
+// 用 URL 哈希名，不用 lastPathComponent（原因见文件头 MBSafeCacheFileName）。
     NSString *fileName = MBSafeCacheFileName(url);
     /// 下载完成的路径
     self.downLoaderPath = [kCachePath stringByAppendingPathComponent:fileName];
@@ -329,23 +282,9 @@ didReceiveResponse:(NSHTTPURLResponse *)response
  */
 - (void)downLoadWithURL:(NSURL *)url offset:(long long)offset {
 
-    // NSURLRequest.timeoutInterval here is the "wait for server response"
-    // timeout — i.e. how long we wait for didReceiveResponse to fire.  We
-    // KEEP this short (30 s) for two reasons:
-    //
-    //   1) An HF main-mirror that's GFW-blocked typically fails the TCP /
-    //      TLS handshake within ~10–15 s; 30 s is a generous upper bound so
-    //      that downloadV2's failed-callback fallback to ModelScope kicks
-    //      in promptly instead of leaving the user staring at a stuck UI.
-    //
-    //   2) Once didReceiveResponse fires, the SOCKET-INACTIVITY timeout
-    //      (session.timeoutIntervalForRequest = 60 s, see -session) takes
-    //      over.  That one is what lets a 1 GiB download keep flowing
-    //      across mobile-network stalls.
-    //
-    // Earlier this was 10 (too short — even a healthy server can't always
-    // respond in 10 s) and then 120 (too long — every demo first-launch
-    // sat for 2 minutes on the doomed HF attempt before falling back).
+// request.timeoutInterval 是「等服务器响应」超时，保持 30s：被墙的 HF 通常
+// 10~15s 内握手失败，30s 足够宽松让 fallback 及时触发。didReceiveResponse 之后
+// 由 socket 静默超时（session.timeoutIntervalForRequest=60s）接管。
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:30];
     [request setValue:[NSString stringWithFormat:@"bytes=%lld-",offset] forHTTPHeaderField:@"Range"];
 

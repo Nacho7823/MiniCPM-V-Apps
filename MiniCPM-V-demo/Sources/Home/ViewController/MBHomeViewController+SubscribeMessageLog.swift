@@ -26,15 +26,20 @@ extension MBHomeViewController {
                         if latestCell.model?.role == "llm", !receivedData.isEmpty {
                             
                             latestCell.model?.contentText = receivedData
-                            // streaming: true 时 cell 使用 plain text 渲染，
-                            // 避免每个 token 都触发 MarkdownRenderer 整段重解析
-                            // （这是 O(N²) 主线程开销的元凶，详见 cell 内注释）。
-                            // 在 $performanceLog 完成回调里会用 streaming: false
-                            // 再渲染一次，正式上 markdown 样式。
+                            // 流式期间也上 markdown（走 StreamingMarkdownRenderer 增量解析）。
+                            // 生成完成时 $performanceLog 回调会用 streaming: false 再渲染一次，
+                            // 给出精确的最终排版。
                             latestCell.bindTextWith(data: latestCell.model, streaming: true)
-                            latestCell.model?.cellHeight = latestCell.heightFromRenderedContent(
+
+                            // 高度**只增不减**：markdown 在标记闭合的瞬间会缩短渲染宽度/高度
+                            // （`**x**`→`x`、`### `→``、``` ``` `` 等），若让 cellHeight 跟着回缩，
+                            // 配合下方「钉到底部」的滚动，整个输出区会每帧上下弹动。
+                            // 这里取与已用高度的较大值消除回缩；完成时的全量渲染会精确收敛。
+                            let measuredHeight = latestCell.heightFromRenderedContent(
                                 viewWidth: self?.view.frame.width ?? 0)
-                            
+                            latestCell.model?.cellHeight = max(
+                                latestCell.model?.cellHeight ?? 0, measuredHeight)
+
                             self?.tableViewScrollToBottom(animated: false)
                         }
                         
@@ -123,34 +128,31 @@ extension MBHomeViewController {
                 
                 
                 if let c = self?.dataArray.count, c > 0 {
-                    if let latestCell = self?.tableView.cellForRow(at: IndexPath(row: (self?.dataArray.count ?? 0) - 1, section: 0)) as? MBTextTableViewCell {
-                        if latestCell.model?.role == "llm" {
-                            // 多模态模型 更新性能日志
-                            if !log.hasPrefix("Loaded model") {
-                                latestCell.model?.performLog = log
-                                
-                                self?.reloadAndScrollToBottom()
-                                
-                                // 显示暂停和继续的悬浮的按钮
-                                if !log.isEmpty {
-                                    
-                                    // 输出完才显示 toolbar
-                                    latestCell.model?.hasBottomToolbar = true
-                                    latestCell.model?.cellHeight = MBTextTableViewCell.calcCellHeight(data: latestCell.model, viewWidth: self?.view.frame.width ?? 0)
-                                    latestCell.bindTextWith(data: latestCell.model)
-                                    
-                                    // 多 layout 一次
-                                    latestCell.layoutIfNeeded()
-                                    
-                                    // 隐藏悬浮的停止生成的按钮
-                                    self?.showFloatingActionViewWith(show: false)
-                                    
-                                    self?.mtmdWrapperExample?.outputText = ""
-                                    self?.mtmdWrapperExample?.performanceLog = ""
-                                }
-                                
+                    let lastModel = self?.dataArray[c - 1]
+                    if lastModel?.role == "llm" {
+                        // 多模态模型 更新性能日志
+                        if !log.hasPrefix("Loaded model") {
+                            lastModel?.performLog = log
+
+                            if !log.isEmpty {
+                                lastModel?.hasBottomToolbar = true
+                                lastModel?.speedLog = self?.mtmdWrapperExample?.lastPerfDisplayString()
+                                lastModel?.cellHeight = MBTextTableViewCell.calcCellHeight(data: lastModel, viewWidth: self?.view.frame.width ?? 0)
                             }
-                            
+
+                            self?.reloadAndScrollToBottom()
+
+                            if !log.isEmpty {
+                                if let latestCell = self?.tableView.cellForRow(at: IndexPath(row: c - 1, section: 0)) as? MBTextTableViewCell {
+                                    latestCell.bindTextWith(data: lastModel)
+                                    latestCell.layoutIfNeeded()
+                                }
+
+                                self?.showFloatingActionViewWith(show: false)
+
+                                self?.mtmdWrapperExample?.outputText = ""
+                                self?.mtmdWrapperExample?.performanceLog = ""
+                            }
                         }
                     }
                 }

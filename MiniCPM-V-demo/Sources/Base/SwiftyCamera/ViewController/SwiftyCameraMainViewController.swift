@@ -783,8 +783,6 @@ extension SwiftyCameraMainViewController {
             
             // iPad
             var cellMargin = 200 + 12 + 12
-            
-            // for MacOS App
             if viewWidth >= 1920 {
                 cellMargin = 200 + 12 + 12 + 185/*magic*/ + 172
             }
@@ -800,8 +798,6 @@ extension SwiftyCameraMainViewController {
                                                                                              height: .greatestFiniteMagnitude),
                                                                                 options: .usesLineFragmentOrigin,
                                                                                 context: nil).size ?? .zero
-            
-            // return cell height
             var textHeight = pureContentTextframe.height
             
             if textHeight / 26 > 5.5 {

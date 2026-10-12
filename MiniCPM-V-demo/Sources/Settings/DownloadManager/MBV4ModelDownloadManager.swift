@@ -262,7 +262,6 @@ class MBV4ModelDownloadManager: NSObject {
     func overallProgress() -> CGFloat {
         let mainProg   = progress(forKey: "v4_main_model")
         let mmprojProg = progress(forKey: "v4_mmproj_model")
-        // let aneProg = progress(forKey: "v4_ane_module")  // ANE 暂禁用
         return (mainProg + mmprojProg) / 2.0
     }
 

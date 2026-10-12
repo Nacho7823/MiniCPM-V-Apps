@@ -18,8 +18,18 @@ class MBTextTableViewCell: UITableViewCell {
     /// 对应的 model
     var model: MBChatModel?
     
+    /// 流式 markdown 增量渲染缓存（每 cell 一份）。流式期间只解析增量的块，
+    /// 避免每帧对全文重解析造成 O(N²) 主线程开销；cell 复用时重置。
+    private let streamingMarkdownCache = StreamingMarkdownRenderer()
+    
     /// cell 距离屏幕左、右的边距
     var cellMargin = 24
+
+    /// 输出气泡「右边界额外外扩量」（pt）：只放宽右边界，左边距不变。
+    /// 调大 → 右边界右移、气泡更宽；0 = 原来的左右对称宽度。**微调宽度只改这一个数**。
+    /// bindTextWith / heightFromRenderedContent / calcCellHeight 三处共用，
+    /// 保证气泡宽度与 cell 高度用同一换行宽，不会裁字。
+    static let kBubbleRightExtra: CGFloat = 10
     
     // 浅蓝色 或者 白色 的背景
     lazy var containerBGView: UIView = {
@@ -28,12 +38,31 @@ class MBTextTableViewCell: UITableViewCell {
         return v
     }()
     
-    /// 自定义输出的结果（文字）视图
-    lazy var customLabel: UILabel = {
-        let label = UILabel()
-        label.numberOfLines = 0
-        label.lineBreakMode = .byWordWrapping
-        return label
+    /// 自定义输出的结果（文字）视图。
+    ///
+    /// **必须是 `UITextView` 而不是 `UILabel`**：Markdown 表格用 `NSTextTable`
+    /// 排版，而文本块（textBlocks）的边框/背景只由文本布局系统绘制 —— `UILabel`
+    /// 不画（实测：表格只剩文字、一条网格线都没有）。`UITextView` 才能画出来。
+    ///
+    /// 配置上一律「去 UI 化」：不可编辑、不可滚动、内边距清零，外观和原来的
+    /// label 保持一致，滚动交给外层 tableView。
+    lazy var customTextView: UITextView = {
+        // iOS 16+ 显式走 TextKit 1：TextKit 2 不支持 textBlocks（表格），
+        // 不显式声明的话系统会检测到表格后打日志自动回退，行为不可控。
+        let tv = UITextView(usingTextLayoutManager: false)
+        tv.isEditable = false
+        tv.isScrollEnabled = false          // 滚动交给外层 tableView
+        tv.backgroundColor = .clear
+        tv.isSelectable = false             // 与旧 label 行为一致（不需要选中）
+        // 默认不接管触摸：UITextView 默认 isUserInteractionEnabled = true，
+        // 会吃掉 cell 的点击/长按。thinking 折叠需要点按时，绑定时再单独打开。
+        tv.isUserInteractionEnabled = false
+        tv.textContainerInset = .zero       // 默认 8pt，必须清零
+        tv.textContainer.lineFragmentPadding = 0  // 默认 5pt，必须清零
+        tv.textContainer.maximumNumberOfLines = 0
+        tv.textContainer.lineBreakMode = .byWordWrapping
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return tv
     }()
     
     // MARK: - 底部 toolbar 区域
@@ -63,6 +92,24 @@ class MBTextTableViewCell: UITableViewCell {
         lbl.text = L.Home.actionCopy.loc
         lbl.textColor = UIColor.mb_color(with: "#666666")
         lbl.font = UIFont.systemFont(ofSize: 14)
+        return lbl
+    }()
+
+    /// 工具条：prefill / decode 速度（复制按钮旁；iPhone / iPad 都显示）
+    /// 本轮要显示的速度文案；**受设置页开关控制**（关掉时返回 nil，即使模型里存着）。
+    ///
+    /// 不清模型里存的值 —— 再拨回来还能看到原数，不必重新生成。
+    private var visibleSpeedLog: String? {
+        guard MiniCPMV47Const.showPerfSpeedEnabled() else { return nil }
+        guard let s = model?.speedLog, !s.isEmpty else { return nil }
+        return s
+    }
+
+    lazy var toolbarSpeedLabel: UILabel = {
+        let lbl = UILabel()
+        lbl.textColor = UIColor.mb_color(with: "#666666")
+        lbl.font = UIFont.systemFont(ofSize: 14)
+        lbl.isHidden = true
         return lbl
     }()
 
@@ -156,8 +203,8 @@ class MBTextTableViewCell: UITableViewCell {
         }
         
         // 添加自定义视图到 cell 的内容视图（contentView）中
-        containerBGView.addSubview(customLabel)
-        customLabel.snp.makeConstraints { make in
+        containerBGView.addSubview(customTextView)
+        customTextView.snp.makeConstraints { make in
             make.left.equalTo(15)
             make.top.equalTo(10)
             make.right.equalTo(-15)
@@ -178,7 +225,7 @@ class MBTextTableViewCell: UITableViewCell {
         toolBarContainerView.snp.makeConstraints { make in
             make.left.equalTo(15)
             make.right.equalTo(-15)
-            make.top.equalTo(customLabel.snp.bottom).offset(10)
+            make.top.equalTo(customTextView.snp.bottom).offset(10)
             make.height.equalTo(0)
         }
         
@@ -204,10 +251,17 @@ class MBTextTableViewCell: UITableViewCell {
         let copyTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapCopyButton))
         toolbarCopyLabel.addGestureRecognizer(copyTapGesture)
 
+        toolBarContainerView.addSubview(toolbarSpeedLabel)
+        toolbarSpeedLabel.snp.makeConstraints { make in
+            make.left.equalTo(toolbarCopyLabel.snp.right).offset(16)
+            make.height.equalTo(24)
+            make.centerY.equalTo(toolbarCopyIcon)
+        }
+
         // toolbar-regenerate 按钮
         toolBarContainerView.addSubview(toolbarRegenerateIcon)
         toolbarRegenerateIcon.snp.makeConstraints { make in
-            make.left.equalTo(toolbarCopyLabel.snp.right).offset(16)
+            make.left.equalTo(toolbarSpeedLabel.snp.right).offset(16)
             make.centerY.equalTo(toolBarContainerView)
             make.height.width.equalTo(20)
         }
@@ -293,6 +347,13 @@ class MBTextTableViewCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        streamingMarkdownCache.reset()
+        // 清掉上一轮的属性串，避免复用瞬间残留旧内容（含旧表格）。
+        customTextView.attributedText = nil
+    }
+    
     public func bindTextWith(data: MBChatModel?, streaming: Bool = false) {
         model = data
         
@@ -322,26 +383,29 @@ class MBTextTableViewCell: UITableViewCell {
             
             let isCollapsed = model?.isThinkingCollapsed ?? false
             let isLLM = model?.role == "llm"
-            // streaming == true 时跳过 MarkdownRenderer：流式路径上每 token 都
-            // 会触发这里，整段重新解析 + CoreText 重排版是 O(N²) 主线程开销，
-            // iOS 17/18 的输入法 candidate accumulator 3 秒超时就由此而来。
-            // 生成完成时上层会再用 streaming=false 调一次，正式渲染 markdown。
-            customLabel.attributedText = MBTextTableViewCell.buildThinkAttributedString(
+            // 流式期间的实时 markdown 是**可选**功能（设置页开关，默认关）。
+            //   关：流式期间走纯文本，生成完成后整体渲染一次 markdown（旧行为，更稳）；
+            //   开：走 StreamingMarkdownRenderer 增量解析，边生成边上样式。
+            let liveMarkdown = streaming && MiniCPMV47Const.streamingMarkdownEnabled()
+            customTextView.attributedText = MBTextTableViewCell.buildThinkAttributedString(
                 from: text, normalAttributes: attributes, paragraphStyle: para,
-                collapsed: isCollapsed, renderMarkdown: isLLM && !streaming)
+                collapsed: isCollapsed, renderMarkdown: isLLM && (!streaming || liveMarkdown),
+                cache: liveMarkdown ? streamingMarkdownCache : nil)
             
             // Tap gesture for collapsing/expanding thinking block
             if text.hasPrefix("<think>") && text.contains("</think>") {
-                customLabel.isUserInteractionEnabled = true
-                if customLabel.gestureRecognizers?.contains(where: { $0 is ThinkingTapGesture }) != true {
+                customTextView.isUserInteractionEnabled = true
+                if customTextView.gestureRecognizers?.contains(where: { $0 is ThinkingTapGesture }) != true {
                     let tap = ThinkingTapGesture(target: self, action: #selector(handleThinkingTap))
-                    customLabel.addGestureRecognizer(tap)
+                    customTextView.addGestureRecognizer(tap)
                 }
             }
             
             // cellMargin means cell left, right margin, 15 inner text margin
-            let frameWidth: CGFloat = self.contentView.frame.size.width - CGFloat((cellMargin*2 + 48/*错落有致*/)) - 30
-            let size = customLabel.attributedText?.boundingRect(with: CGSize(width: frameWidth, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, context: nil).size ?? .zero
+            let frameWidth: CGFloat = self.contentView.frame.size.width - CGFloat((cellMargin*2 + 48/*错落有致*/)) - 30 + Self.kBubbleRightExtra
+            // 用 sizeThatFits（而不是 attributedText.boundingRect）：表格是段落级
+            // textBlocks，只有文本视图的布局才能正确算出它的高度。
+            let size = customTextView.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
 
             let textWidth = ceil(size.width)
 
@@ -361,20 +425,17 @@ class MBTextTableViewCell: UITableViewCell {
                 toolBarContainerView.snp.updateConstraints { make in
                     make.height.equalTo(0)
                 }
-
-                // self.contentView.backgroundColor = .orange
-
             } else if model?.role == "llm" {
                 
                 self.containerBGView.backgroundColor = UIColor.mb_color(with: "#EFF4FF")
-
-                // self.contentView.backgroundColor = .yellow
-                // self.containerBGView.backgroundColor = .red
-                // self.customLabel.backgroundColor = .green
-
                 if containerBGWidth < 280 {
                     // 保证可以放得下 toolbar
                     containerBGWidth = 280
+                }
+                if let speed = visibleSpeedLog {
+                    // 速度文案较长：撑宽 toolbar，但不超出可用的 cell 宽度（iPhone 上 420 会溢一点）
+                    let maxWidth = self.contentView.frame.size.width - CGFloat(cellMargin * 2)
+                    containerBGWidth = max(containerBGWidth, min(420, maxWidth))
                 }
 
                 containerBGView.snp.remakeConstraints { make in
@@ -396,11 +457,19 @@ class MBTextTableViewCell: UITableViewCell {
                         toolBarContainerView.snp.updateConstraints { make in
                             make.height.equalTo(24)
                         }
+                        if let speed = visibleSpeedLog {
+                            toolbarSpeedLabel.text = speed
+                            toolbarSpeedLabel.isHidden = false
+                        } else {
+                            toolbarSpeedLabel.text = nil
+                            toolbarSpeedLabel.isHidden = true
+                        }
                     } else {
                         // 不显示 toolbar
                         toolBarContainerView.snp.updateConstraints { make in
                             make.height.equalTo(0)
                         }
+                        toolbarSpeedLabel.isHidden = true
                         
                         // 注意：floating action 只有不显示 toolbar 的情况下才能显示，要不然就会冲突
                         if model?.hasFloatingActionButton == true {
@@ -421,6 +490,7 @@ class MBTextTableViewCell: UITableViewCell {
                     toolBarContainerView.snp.updateConstraints { make in
                         make.height.equalTo(0)
                     }
+                    toolbarSpeedLabel.isHidden = true
 
                     // 不显示悬浮的 popup area
                     actionPopupContainerView.snp.updateConstraints { make in
@@ -431,7 +501,7 @@ class MBTextTableViewCell: UITableViewCell {
             }
 
             // calc label height
-            customLabel.snp.updateConstraints { make in
+            customTextView.snp.updateConstraints { make in
                 make.height.equalTo(size.height)
             }
         } else {
@@ -487,20 +557,23 @@ class MBTextTableViewCell: UITableViewCell {
         }
     }
     
-    /// 流式更新时，从已渲染的 customLabel.attributedText 直接计算高度，
+    /// 流式更新时，从已渲染的 customTextView.attributedText 直接计算高度，
     /// 避免重复调用 buildThinkAttributedString 做第二次 Markdown 渲染。
     public func heightFromRenderedContent(viewWidth: CGFloat) -> CGFloat {
-        guard let attrText = customLabel.attributedText else { return 0 }
+        guard let attrText = customTextView.attributedText else { return 0 }
 
         var margin: CGFloat = 32
         if MBUtils.isDeviceIPad() {
             margin = 64 * 2
         }
 
-        let frameWidth = viewWidth - CGFloat(margin * 2 + 48) - 15
-        let textSize = attrText.boundingRect(
-            with: CGSize(width: frameWidth, height: .greatestFiniteMagnitude),
-            options: .usesLineFragmentOrigin, context: nil).size
+        let frameWidth = viewWidth - CGFloat(margin * 2 + 48) - 15 + Self.kBubbleRightExtra
+        // 用 sizeThatFits（表格是段落级 textBlocks，boundingRect 量不准）；
+        // UITextView 非线程安全，必须在主线程调用。
+        let textSize = Thread.isMainThread
+            ? customTextView.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
+            : attrText.boundingRect(with: CGSize(width: frameWidth, height: .greatestFiniteMagnitude),
+                                    options: .usesLineFragmentOrigin, context: nil).size
 
         var toolbarAreaHeight: CGFloat = 0
         if model?.hasBottomToolbar == true {
@@ -539,10 +612,19 @@ class MBTextTableViewCell: UITableViewCell {
                 .paragraphStyle: para
             ]
             
-            let customLabel = UILabel()
+            // 用 UITextView 量（与 bindTextWith 一致）：表格是段落级 textBlocks，
+            // 只有文本视图的布局才算得准高度。
+            let probe = UITextView(usingTextLayoutManager: false)
+            probe.isEditable = false
+            probe.isScrollEnabled = false
+            probe.textContainerInset = .zero
+            probe.textContainer.lineFragmentPadding = 0
+            probe.textContainer.maximumNumberOfLines = 0
+            probe.textContainer.lineBreakMode = .byWordWrapping
+
             let isCollapsed = data?.isThinkingCollapsed ?? false
             let isLLM = data?.role == "llm"
-            customLabel.attributedText = buildThinkAttributedString(
+            probe.attributedText = buildThinkAttributedString(
                 from: text, normalAttributes: attributes, paragraphStyle: para,
                 collapsed: isCollapsed, renderMarkdown: isLLM)
             
@@ -554,9 +636,9 @@ class MBTextTableViewCell: UITableViewCell {
             }
             
             // cellMargin means cell left, right margin, 15 inner text margin
-            let frameWidth: CGFloat = viewWidth - CGFloat((cellMargin*2 + 48/* 为了错落有致 */)) - 15/* 15 * 2 UILabel 内边距 */
+            let frameWidth: CGFloat = viewWidth - CGFloat((cellMargin*2 + 48/* 为了错落有致 */)) - 15/* 15 * 2 UILabel 内边距 */ + Self.kBubbleRightExtra
 
-            let pureContentTextframe = customLabel.attributedText?.boundingRect(with: CGSize(width: frameWidth, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, context: nil).size ?? .zero
+            let pureContentTextframe = probe.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
             
             /*
              
@@ -594,8 +676,6 @@ class MBTextTableViewCell: UITableViewCell {
             
             // 10 = text inner bottom, 20 = log 的高度, 5
             let cellBottom = toolbarAreaHeight + logHeight + 34/* floating popup area */
-            
-            // return cell height
             return cellTop + pureContentTextframe.height + Double(cellBottom)
         }
         
@@ -745,11 +825,15 @@ extension MBTextTableViewCell {
         normalAttributes: [NSAttributedString.Key: Any],
         paragraphStyle: NSMutableParagraphStyle,
         collapsed: Bool = false,
-        renderMarkdown: Bool = false
+        renderMarkdown: Bool = false,
+        cache: StreamingMarkdownRenderer? = nil
     ) -> NSAttributedString {
         
         guard text.hasPrefix("<think>") else {
             if renderMarkdown {
+                if let cache {
+                    return cache.render(text, baseAttributes: normalAttributes)
+                }
                 return MarkdownRenderer.render(text, baseAttributes: normalAttributes)
             }
             return NSAttributedString(string: text, attributes: normalAttributes)
@@ -786,7 +870,11 @@ extension MBTextTableViewCell {
             let response = String(text[responseStart...])
             if !response.isEmpty {
                 if renderMarkdown {
-                    result.append(MarkdownRenderer.render(response, baseAttributes: normalAttributes))
+                    if let cache {
+                        result.append(cache.render(response, baseAttributes: normalAttributes))
+                    } else {
+                        result.append(MarkdownRenderer.render(response, baseAttributes: normalAttributes))
+                    }
                 } else {
                     result.append(NSAttributedString(string: response, attributes: normalAttributes))
                 }

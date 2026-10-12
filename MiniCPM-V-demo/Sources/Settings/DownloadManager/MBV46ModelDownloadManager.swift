@@ -343,8 +343,6 @@ class MBV46ModelDownloadManager: NSObject {
 
         let llmProg    = progress(for: "v46_main_model",  downloadedWhenDone: llmBytes)
         let mmprojProg = progress(for: "v46_mmproj_model", downloadedWhenDone: mmprojBytes)
-        // let aneProg = progress(for: "v46_ane_module", downloadedWhenDone: aneBytes)
-
         let weighted = llmProg * CGFloat(llmBytes)
                      + mmprojProg * CGFloat(mmprojBytes)
                      // + aneProg * CGFloat(aneBytes)

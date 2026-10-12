@@ -31,6 +31,10 @@ enum CurrentUsingModelTypeV2 {
     case V5TextModel
     /// MiniCPM5-2B 纯文本模型
     case V526TextModel
+    /// V4.7 MoE SSD：文本塔 qwen35moe + 视觉塔 minicpmv4_6
+    case V47MoE
+    /// V4.7 **1B**：dense 文本塔 qwen35 + 视觉塔 minicpmv4_7（无 experts、无 MoE）
+    case V47_1B
     /// VoxCPM2 语音合成模型
     case Voxcpm2Model
     
@@ -150,7 +154,15 @@ public class MTMDWrapperExample: ObservableObject {
     public func initialize(modelPath: String? = nil,
                            mmprojPath: String? = nil,
                            coremlPath: String? = nil,
-                           nCtx: Int? = nil) async {
+                           nCtx: Int? = nil,
+                           moeExpertsPath: String? = nil,
+                           moeSlotBank: Int = 0,
+                           moeDecodeWindow: Int = 0,
+                           nUbatchOverride: Int? = nil,
+                           imageMaxTokensOverride: Int? = nil,
+                           warmup: Bool? = nil,
+                           draftModelPath: String = "",
+                           specDraftNMax: Int = 0) async {
         do {
             let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let defaultModelPath = documentsDir.appendingPathComponent(MiniCPMModelConst.modelv4_Q4_K_M_FileName).path
@@ -177,14 +189,20 @@ public class MTMDWrapperExample: ObservableObject {
             //                       低端机多 slice 大图 prefill 期间的内存峰值
             // 详见 MBDeviceMemoryProbe 文件头注释。
             let tier        = MBDeviceMemoryProbe.currentTier
-            let nUbatch     = tier.recommendedUbatch
-            let imgMaxTok   = tier.recommendedImageMaxTokens
+            let nUbatch     = nUbatchOverride ?? tier.recommendedUbatch
+            let imgMaxTok   = imageMaxTokensOverride ?? tier.recommendedImageMaxTokens
+            let experts     = moeExpertsPath ?? ""
+            let doWarmup    = warmup ?? experts.isEmpty
 
             // iOS Simulator 的 MTLSimDevice 在 mmproj 那种 1+ GiB 的 buffer 上
             // 直接 _xpc_api_misuse → SIGTRAP（参见 MBDeviceMemoryProbe.isSimulator
             // 注释）。在 sim 上强制全 CPU 路径走完整调用链，真机仍然 GPU。
             let useGPU       = !MBDeviceMemoryProbe.isSimulator
             let mmprojUseGPU = !MBDeviceMemoryProbe.isSimulator
+
+            // DSpark：草稿模型在设备上找不到时由调用方传空字符串 → 静默关闭投机。
+            let draftPath = draftModelPath
+            let specNMax  = draftPath.isEmpty ? 0 : specDraftNMax
 
             // nCtx 走"显式优先、缺省 fallback 到 MTMDParams 默认"的两段策略。
             // 调用方（LoadModel）按模型类型决定要不要抬高，避免老模型默认翻倍 KV。
@@ -196,9 +214,18 @@ public class MTMDWrapperExample: ObservableObject {
                         nCtx: n,
                         useGPU: useGPU,
                         mmprojUseGPU: mmprojUseGPU,
+                        warmup: doWarmup,
                         nUbatch: nUbatch,
                         imageMaxSliceNums: sliceCap,
-                        imageMaxTokens: imgMaxTok
+                        imageMaxTokens: imgMaxTok,
+                        moeExpertsPath: experts,
+                        moeSlotBank: moeSlotBank,
+                        moeDecodeWindow: moeDecodeWindow,
+                        moeLookaheadPrefetchDepth: experts.isEmpty ? 0 : MiniCPMV47Const.lookaheadPrefetchDepth(),
+                        moePrewarmLevel: experts.isEmpty ? 0 : MiniCPMV47Const.prewarmLevel(),
+                        moePrewarmTableId: experts.isEmpty ? 0 : MiniCPMV47Const.prewarmTableId(),
+                        draftModelPath: draftPath,
+                        specDraftNMax: specNMax
                     )
                 } else {
                     return MTMDParams(
@@ -206,15 +233,24 @@ public class MTMDWrapperExample: ObservableObject {
                         mmprojPath: finalMmprojPath,
                         useGPU: useGPU,
                         mmprojUseGPU: mmprojUseGPU,
+                        warmup: doWarmup,
                         nUbatch: nUbatch,
                         imageMaxSliceNums: sliceCap,
-                        imageMaxTokens: imgMaxTok
+                        imageMaxTokens: imgMaxTok,
+                        moeExpertsPath: experts,
+                        moeSlotBank: moeSlotBank,
+                        moeDecodeWindow: moeDecodeWindow,
+                        moeLookaheadPrefetchDepth: experts.isEmpty ? 0 : MiniCPMV47Const.lookaheadPrefetchDepth(),
+                        moePrewarmLevel: experts.isEmpty ? 0 : MiniCPMV47Const.prewarmLevel(),
+                        moePrewarmTableId: experts.isEmpty ? 0 : MiniCPMV47Const.prewarmTableId(),
+                        draftModelPath: draftPath,
+                        specDraftNMax: specNMax
                     )
                 }
             }()
             self.params = params
             try await mtmdWrapper.initialize(with: params)
-            print("MTMDWrapperExample: n_ctx = \(params.nCtx), n_ubatch = \(nUbatch) (tier=\(tier.displayName)), useGPU = \(useGPU), image_max_slice_nums(UI) = \(sliceCap), image_max_tokens(bridge) = \(imgMaxTok), CoreML: 已下线")
+            print("MTMDWrapperExample: n_ctx = \(params.nCtx), n_ubatch = \(nUbatch) (tier=\(tier.displayName)), useGPU = \(useGPU), image_max_tokens = \(imgMaxTok), experts = \(experts), slot_bank = \(moeSlotBank), decode_window = \(params.moeDecodeWindow), lookahead_prefetch_depth = \(params.moeLookaheadPrefetchDepth), specDraftNMax = \(params.specDraftNMax), draft = \(draftPath.isEmpty ? "(none)" : draftPath)")
             self.multiModelLoadingSuccess = true
         } catch {
             errorMessage = error.localizedDescription
@@ -227,10 +263,17 @@ public class MTMDWrapperExample: ObservableObject {
     /// - Parameters:
     ///   - modelPath: 模型路径
     ///   - nCtx: 上下文长度
-    public func initializeTextOnly(modelPath: String, nCtx: Int? = nil) async {
+    public func initializeTextOnly(modelPath: String, nCtx: Int? = nil,
+                                  moeExpertsPath: String = "", moeSlotBank: Int = 0,
+                                  moeDecodeWindow: Int = 0,
+                                  nUbatchOverride: Int? = nil,
+                                  draftModelPath: String = "",
+                                  specDraftNMax: Int = 0) async {
         do {
             let tier        = MBDeviceMemoryProbe.currentTier
-            let nUbatch     = tier.recommendedUbatch
+            // n_ubatch 直接决定 MTL0 compute buffer（实测 V47 在 ub=1024 时 1104 MiB）。
+            // 允许覆盖是为了按实际 prompt 长度/内存预算调它，见 MiniCPMV47Const.nUbatch()。
+            let nUbatch     = nUbatchOverride ?? tier.recommendedUbatch
             let useGPU      = !MBDeviceMemoryProbe.isSimulator
 
             let params = MTMDParams(
@@ -243,11 +286,23 @@ public class MTMDWrapperExample: ObservableObject {
                 warmup: false,
                 nUbatch: nUbatch,
                 imageMaxSliceNums: -1,
-                imageMaxTokens: -1
+                imageMaxTokens: -1,
+                moeExpertsPath: moeExpertsPath,
+                moeSlotBank: moeSlotBank,
+                moeDecodeWindow: moeDecodeWindow,
+                // 缓存与预读**不是互斥**的：每层窗口分两块 —— 缓存区 c 个（跨 token
+                // LRU）+ 预读暂存区 K 个（每步重填，不淘汰缓存）。覆盖是并集。
+                // 见 llama-moe-slot.cpp 的 install_prefetch_into_window。
+                moeLookaheadPrefetchDepth: moeExpertsPath.isEmpty
+                    ? 0 : MiniCPMV47Const.lookaheadPrefetchDepth(),
+                moePrewarmLevel: moeExpertsPath.isEmpty ? 0 : MiniCPMV47Const.prewarmLevel(),
+                moePrewarmTableId: moeExpertsPath.isEmpty ? 0 : MiniCPMV47Const.prewarmTableId(),
+                draftModelPath: draftModelPath,
+                specDraftNMax: draftModelPath.isEmpty ? 0 : specDraftNMax
             )
             self.params = params
             try await mtmdWrapper.initializeTextOnly(with: params)
-            print("MTMDWrapperExample: text-only init, n_ctx = \(params.nCtx), n_ubatch = \(nUbatch), temp = 0.6")
+            print("MTMDWrapperExample: text-only init, n_ctx = \(params.nCtx), n_ubatch = \(nUbatch), temp = 0.6, specDraftNMax = \(params.specDraftNMax), draft = \(draftModelPath.isEmpty ? "(none)" : draftModelPath)")
             self.multiModelLoadingSuccess = true
         } catch {
             errorMessage = error.localizedDescription
@@ -284,6 +339,15 @@ public class MTMDWrapperExample: ObservableObject {
             }
             throw error
         }
+    }
+
+    /// 选图后的**隐藏步骤**：重建 ubatch + 预热专家窗口。
+    ///
+    /// 与 `addImageInBackgroundThrowing` **分开调**是故意的 —— 上层在两者之间量
+    /// 「预处理耗时」，这样预热不会计入 UI（见 MTMDWrapper.prewarmAfterImageInBackground）。
+    /// 不抛错，也无需 await 结果正确性：预热是纯优化。
+    public func prewarmAfterImageInBackground() async {
+        await mtmdWrapper.prewarmAfterImageInBackground()
     }
 
     public func addFrameInBackground(_ imagePath: String) async -> Bool {
@@ -323,6 +387,9 @@ public class MTMDWrapperExample: ObservableObject {
             
             // 添加调试信息
             print("开始生成 - 当前状态: \(mtmdWrapper.generationState)")
+            if currentUsingModelType == .V47MoE {
+                mtmdWrapper.setMoeLookaheadPrefetchDepth(effectiveLookaheadPrefetchDepth)
+            }
             try await mtmdWrapper.startGeneration()
         } catch {
             errorMessage = error.localizedDescription
@@ -331,10 +398,33 @@ public class MTMDWrapperExample: ObservableObject {
         }
     }
     
+    /// 实际生效的预读深度。
+    ///
+    /// 与按层窗口**互斥**：窗口模式下预读要写进目标层自己的窗口（与缓存抢同一片
+    /// slot），主线程必须在 take() 里等 worker 写完，实测变成 ~43ms/步的阻塞等待，
+    /// 净效果为负（同会话配对：K=0 中位 5.71 t/s vs K=8 的 5.34）。
+    /// 所以只要窗口启用，预读一律为 0 —— 「大缓存」和「预读」二选一。
+    private var effectiveLookaheadPrefetchDepth: Int {
+        // 缓存与预读可以同时开（分区实现），所以这里不再因窗口而清零。
+        // `-moeNoPrefetch` 供实验单独关掉预读。
+        if ProcessInfo.processInfo.arguments.contains("-moeNoPrefetch") {
+            return 0
+        }
+        return MiniCPMV47Const.lookaheadPrefetchDepth()
+    }
+
+    /// 实际生效的预读深度（bench 报告用，避免显示「配置值」误导）。
+    public var appliedLookaheadPrefetchDepth: Int { effectiveLookaheadPrefetchDepth }
+
     /// 停止生成
     public func stopGeneration() {
         mtmdWrapper.stopGeneration()
         print("停止生成")
+    }
+
+    /// iPad 工具条：最近一轮 prefill / decode tok/s
+    public func lastPerfDisplayString() -> String {
+        mtmdWrapper.lastPerfDisplayString()
     }
     
     /// 重置
@@ -362,6 +452,8 @@ public class MTMDWrapperExample: ObservableObject {
         case .V46MultiModel:  version = 46
         case .V5TextModel:    version = 5
         case .V526TextModel:  version = 5
+        case .V47MoE:         version = 47
+        case .V47_1B:         version = 471
         case .Voxcpm2Model:  version = 0  // VoxCPM2 handled by TtsEngine, not MTMD
         case .Unknown:        version = 46
         }
@@ -373,6 +465,22 @@ public class MTMDWrapperExample: ObservableObject {
     /// pushed into the C bridge once a context exists.
     public func setEnableThinking(_ enable: Bool) {
         mtmdWrapper.setEnableThinking(enable)
+    }
+
+    /// Session-only look-ahead prefetch depth (0 = off). Cold start is always 0; not written to disk.
+    public func setMoeLookaheadPrefetchDepth(_ depth: Int) {
+        MiniCPMV47Const.setLookaheadPrefetchDepth(depth)
+        let applied = MiniCPMV47Const.lookaheadPrefetchDepth()
+        guard multiModelLoadingSuccess else {
+            print("MTMDWrapperExample: moe_lookahead_prefetch_depth = \(applied); will apply on next init")
+            return
+        }
+        if mtmdWrapper.generationState == .generating {
+            print("MTMDWrapperExample: moe_lookahead_prefetch_depth = \(applied); applies after this generation")
+            return
+        }
+        mtmdWrapper.setMoeLookaheadPrefetchDepth(applied)
+        print("MTMDWrapperExample: live-updated moe_lookahead_prefetch_depth = \(applied)")
     }
 
     /// Persist + live-apply the user's chosen slice cap.  Safe to call

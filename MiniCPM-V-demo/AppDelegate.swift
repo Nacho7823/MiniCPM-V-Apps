@@ -11,6 +11,19 @@ import UIKit
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // 以下三项都只允许在进程启动时跑一次。
+        if ProcessInfo.processInfo.arguments.contains("-moeCacheWindowReset") {
+            print("[MODEL] -moeCacheWindowReset：已清除保存的专家缓存 c")
+            MiniCPMV47Const.resetCacheWindowC()
+        }
+        MiniCPMV47Const.applyCacheWindowCrashRecoveryIfNeeded()
+        MiniCPMV47Const.migrateDsparkDefaultOffIfNeeded()
+
+        // c 的默认值按设备内存分档（仅 V47 用 decode window）。
+        if UserDefaults.standard.string(forKey: "current_selected_model") == MiniCPMV47Const.userDefaultsKey {
+            MiniCPMV47Const.seedCacheWindowDefaultIfNeeded()
+        }
+
         DispatchQueue.global(qos: .utility).async {
             MiniCPMV46CoreMLBootstrap.installBundledModelIntoDocumentsIfNeeded()
         }

@@ -12,6 +12,7 @@ xcuserdata/
 ## compatibility with Xcode 3 and earlier (ignoring not required starting Xcode 4)
 build/
 DerivedData/
+build-device/
 *.moved-aside
 *.pbxuser
 !default.pbxuser
@@ -74,6 +75,7 @@ __MACOSX
 
 # Xcode build cache (xcodebuild -derivedDataPath)
 build_tmp/
+build-derived/
 
 # AI agent local notes (Claude / Cursor / Codex 等本地协作笔记，不入库)
 CLAUDE.md
@@ -106,3 +108,6 @@ dist/
 
 # Prebuilt llama.xcframework variants (numbered copies)
 MiniCPM-V-demo/thirdparty/*_llama.xcframework/
+
+# VSCode per-user / local absolute paths
+.vscode/

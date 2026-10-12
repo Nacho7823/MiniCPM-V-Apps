@@ -60,8 +60,8 @@ extension MBHomeViewController {
         // append robte output text cell, prepare llm output
         appendTextDataToCellWith(text: "", role: "llm")
         
-        // 滚动到底部
-        reloadAndScrollToBottom()
+        // 滚动到底部（用户主动发消息，强制滚并解除「触摸暂停」）
+        reloadAndScrollToBottom(force: true)
         
         // 清空输出
         mtmdWrapperExample?.outputText = ""

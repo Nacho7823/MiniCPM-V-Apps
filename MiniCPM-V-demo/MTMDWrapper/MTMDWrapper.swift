@@ -37,7 +37,12 @@ public class MTMDWrapper: ObservableObject {
     /// MiniCPM5 / V-4.6 thinking toggle. Default off. Applied on the next user turn.
     public var enableThinking: Bool = false
 
-    /// 26=V2.6, 40=V4.0, 46/460/461=V4.6, 5=MiniCPM5
+    /// 自动化基准用：>0 时生成到该 token 数就停，不等 EOG。
+    /// 固定步数是让不同 depth / 不同设备的 decode t/s 可比的前提 —— 否则
+    /// 生成长度随模型输出变化，t/s 会混入"生成了多长"这个无关变量。
+    public var decodeTokenLimit: Int = 0
+
+    /// 26=V2.6, 40=V4.0, 46/460/461=V4.6, 47=V4.7 MoE SSD, 5=MiniCPM5
     public private(set) var modelVersion: Int = 0
 
     private var supportsThinkingPrefix: Bool {
@@ -54,6 +59,12 @@ public class MTMDWrapper: ObservableObject {
     
     /// 生成任务
     private var generationTask: Task<Void, Never>?
+
+    /// 最近一轮 native prefill / decode 计数（生成结束时 snapshot）
+    public private(set) var lastPerf = mb_mtmd_perf(
+        prefill_tokens: 0, decode_tokens: 0, prefill_ms: 0, decode_ms: 0, prep_ms: 0,
+        moe_k_prefill: 0, moe_k_decode: 0, image_tokens: 0, image_encode_ms: 0
+    )
     
     /// 生成队列
     private let generationQueue = DispatchQueue(label: "com.mtmd.generation", qos: .userInitiated)
@@ -102,14 +113,26 @@ public class MTMDWrapper: ObservableObject {
                 var cParams = params.toCParams()
                 // 路径在新 bridge 里作为 mb_mtmd_init 的独立参数传，
                 // 避免把 const char * 字段塞进结构体后 Swift 闭包外指针失效。
-                let ctx = params.modelPath.withCString { modelCStr in
+                let draftPath = params.draftModelPath
+                let ctx: OpaquePointer? = params.modelPath.withCString { modelCStr in
                     params.mmprojPath.withCString { mmprojCStr in
-                        mb_mtmd_init(modelCStr, mmprojCStr, &cParams)
+                        draftPath.withCString { draftCStr in
+                            let draftPtr: UnsafePointer<CChar>? = draftPath.isEmpty ? nil : draftCStr
+                            if params.moeExpertsPath.isEmpty {
+                                return mb_mtmd_init(modelCStr, mmprojCStr, nil, draftPtr, &cParams)
+                            }
+                            return params.moeExpertsPath.withCString { expertsCStr in
+                                mb_mtmd_init(modelCStr, mmprojCStr, expertsCStr, draftPtr, &cParams)
+                            }
+                        }
                     }
                 }
 
                 if ctx == nil {
-                    continuation.resume(throwing: MTMDError.initializationFailed("无法创建 MTMD 上下文"))
+                    let raw = mb_mtmd_last_init_error()
+                    let detail = (raw != nil) ? String(cString: raw!) : ""
+                    let msg = detail.isEmpty ? "无法创建 MTMD 上下文" : detail
+                    continuation.resume(throwing: MTMDError.initializationFailed(msg))
                     return
                 }
                 
@@ -140,12 +163,27 @@ public class MTMDWrapper: ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 var cParams = params.toCParams()
+                let expertsPath = params.moeExpertsPath
+                let draftPath   = params.draftModelPath
                 let ctx = params.modelPath.withCString { modelCStr in
-                    mb_mtmd_init_text_only(modelCStr, &cParams)
+                    // 空 experts → 传 nullptr（纯 dense 文本模型）。
+                    // 非空 → 走 MoE SSD 流式，35B-A3B 全量专家在 8GB 手机上放不下。
+                    // 空 draft → 传 nullptr（投机解码关闭）。
+                    expertsPath.withCString { expertsCStr in
+                        draftPath.withCString { draftCStr in
+                            mb_mtmd_init_text_only(modelCStr,
+                                                   expertsPath.isEmpty ? nil : expertsCStr,
+                                                   draftPath.isEmpty ? nil : draftCStr,
+                                                   &cParams)
+                        }
+                    }
                 }
 
                 if ctx == nil {
-                    continuation.resume(throwing: MTMDError.initializationFailed("无法创建纯文本模型上下文"))
+                    let raw = mb_mtmd_last_init_error()
+                    let detail = (raw != nil) ? String(cString: raw!) : ""
+                    let msg = detail.isEmpty ? "无法创建纯文本模型上下文" : detail
+                    continuation.resume(throwing: MTMDError.initializationFailed(msg))
                     return
                 }
 
@@ -170,13 +208,8 @@ public class MTMDWrapper: ObservableObject {
     public static let defaultPrefillTimeoutSeconds: TimeInterval = 180
 
     /// 在后台线程中添加图片（非 @MainActor 版本）
-    /// - Parameters:
-    ///   - imagePath: 图片路径
-    ///   - timeoutSeconds: 等待 mb_mtmd_prefill_image 的最长时间。超时即抛
-    ///     `MTMDError.timeout`，让上层（cell 进度条 / "预处理耗时" 文本）能
-    ///     走兜底分支，而不是永远卡在没有耗时的状态。
-    ///     注意：由于 C++ 同步 API 没法被中断，超时后底层调用仍会在后台跑完，
-    ///     但 Swift 这边已经放手，UI 不再被它绑住。
+    /// - Parameter timeoutSeconds: 等待 prefill_image 的上限。超时抛 MTMDError.timeout，
+    ///   让上层走兜底分支而不是永远卡住。注意 C++ 同步 API 不可中断，超时后底层仍会跑完。
     public func addImageInBackground(_ imagePath: String,
                                      timeoutSeconds: TimeInterval = MTMDWrapper.defaultPrefillTimeoutSeconds) async throws {
         guard initializationState == .initialized else {
@@ -206,6 +239,28 @@ public class MTMDWrapper: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// 选图编码后的隐藏步骤：重建自适应 ubatch + 预热（纯优化，不抛错）。
+    /// 别与 addImageInBackground 合回去 —— 上层「预处理耗时」包着后者，预热会被计入。
+    public func prewarmAfterImageInBackground(
+        timeoutSeconds: TimeInterval = MTMDWrapper.defaultPrefillTimeoutSeconds
+    ) async {
+        guard initializationState == .initialized, let ctx = context else { return }
+
+        do {
+            try await runWithWatchdog(
+                timeoutSeconds: timeoutSeconds,
+                timeoutMessage: "prewarmAfterImageInBackground timed out after \(Int(timeoutSeconds))s"
+            ) { resumeOnce in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    _ = mb_mtmd_prewarm_after_image(ctx)
+                    resumeOnce(.success(()))
+                }
+            }
+        } catch {
+            print("MTMDWrapper: prewarmAfterImageInBackground failed: \(error)")
         }
     }
 
@@ -315,15 +370,30 @@ public class MTMDWrapper: ObservableObject {
         }
         print("MTMDWrapper: 生成已停止")
     }
-    
-    /// 运行时调整单张图最大切片数（无需 reload mmproj）。
+
+    /// 聊天工具条是否显示 "prefill / decode t/s"。
     ///
-    /// clip 在每张图编码时都会重新读取 hparams.custom_image_max_slice_nums，
-    /// 所以这里只是把新值写入上下文，下一张图自然就用新档位生效。
-    /// 链路：mb_mtmd_set_image_max_slice_nums → mtmd_set_image_max_slice_nums →
-    /// clip_set_image_max_slice_nums → 写入 clip_hparams。
-    /// - Parameter n: 1 表示不切图（最快），9 表示 MiniCPM-V 模型上限（最清晰）。
-    ///                传 -1 等价于"按模型默认"。
+    /// 改为设置页可切换（原为编译期常量）：调试要看到、录制 case 又不想带上 t/s，
+    /// 而改常量每次都要重编。关掉只是不显示；native 那行 `[MBMtmd] perf app:` 不受影响。
+    public static var showPerfSpeedInToolbar: Bool {
+        MiniCPMV47Const.showPerfSpeedEnabled()
+    }
+
+    /// 对话框工具条用的 "prefill x.x t/s  decode y.y t/s  Kp/Kd"。
+    /// `showPerfSpeedInToolbar` 为 false 时返回空串，调用方据此隐藏。
+    public func lastPerfDisplayString() -> String {
+        guard MTMDWrapper.showPerfSpeedInToolbar else { return "" }
+        func tokPerSec(tokens: Int32, ms: Double) -> Double {
+            guard tokens > 0, ms > 0 else { return 0 }
+            return Double(tokens) / (ms / 1000.0)
+        }
+        let p = tokPerSec(tokens: lastPerf.prefill_tokens, ms: lastPerf.prefill_ms)
+        let d = tokPerSec(tokens: lastPerf.decode_tokens, ms: lastPerf.decode_ms)
+        return String(format: "prefill %.1f t/s  decode %.1f t/s", p, d)
+    }
+    
+    /// 运行时调整单图最大切片数（无需 reload mmproj）：clip 每张图都会重读
+    /// hparams.custom_image_max_slice_nums。n: 1=不切图，9=模型上限，-1=模型默认。
     public func setImageMaxSliceNums(_ n: Int) {
         guard let ctx = context else {
             // 还没 init 完，下一次 initialize() 会通过 MTMDParams 把值带进去。
@@ -350,6 +420,12 @@ public class MTMDWrapper: ObservableObject {
         mb_mtmd_set_enable_thinking(ctx, enable)
     }
 
+    public func setMoeLookaheadPrefetchDepth(_ depth: Int) {
+        guard let ctx = context else { return }
+        let applied = mb_mtmd_set_moe_lookahead_prefetch_depth(ctx, Int32(depth))
+        print("MTMDWrapper: setMoeLookaheadPrefetchDepth(\(depth)) -> \(applied)")
+    }
+
     /// 重置上下文
     public func reset() async {
         stopGeneration()
@@ -373,18 +449,10 @@ public class MTMDWrapper: ObservableObject {
         print("MTMDWrapper: 上下文已重置")
     }
 
-    /// 仅清 KV cache + n_past=0，**保留** mtmd_context / llama_context / sampler 不重建。
-    ///
-    /// 用途：开启一段独立的 prefill turn（例如视频抽帧、跨场景切换），跟 Python
-    /// 端 minicpm-v 的 `model.chat(msgs=[...], ...)` 行为对齐——每次 chat 调用都从
-    /// 干净的 KV 开始，不带前序对话历史。这样可以避免：
-    ///   1. n_ctx 溢出：长对话累积 + 视频抽帧 80+ token/帧 很容易顶到 n_ctx=8192，
-    ///      触发 llama_decode 失败；MiniCPM-V 4.6 的 hybrid SSM+Attn 模型上，单
-    ///      chunk 失败后 KV 无法 partial truncate（SSM 不支持），整 ctx 就废了；
-    ///   2. M-RoPE 一致性裂缝：同上 root cause 的连环失败。
-    ///
-    /// 比起 `reset()` 这种"销毁 ctx + 重新 init"的重操作，这里只是 O(1) 调
-    /// `llama_memory_seq_rm(seq=0, p0=0, p1=-1)`，毫秒级，不需要重新 load 模型。
+    /// 仅清 KV cache + n_past=0，保留 context / sampler 不重建。
+    /// 用途：开一段独立 prefill turn（视频抽帧、场景切换），对齐 Python 端每次
+    /// chat() 都从干净 KV 开始。避免长对话 + 抽帧顶穿 n_ctx —— 混合 SSM 模型
+    /// 单 chunk 失败后无法部分截断，整 ctx 就废了。O(1)，毫秒级。
     public func clearKVCacheForNewTurn() {
         guard let ctx = context else { return }
         let ok = mb_mtmd_clean_kv_cache(ctx)
@@ -400,26 +468,10 @@ public class MTMDWrapper: ObservableObject {
     
     // MARK: - Private Methods
     
-    /// 执行生成
-    ///
-    /// **节流设计**：这里有一个**本地累加 buffer + 周期性 flush** 的策略。
-    /// 不能简单地"每 token 都 `fullOutput += ...`"，因为：
-    ///   1. MTMDWrapper 是 @MainActor，每次属性赋值都会被强制 hop 回主线程
-    ///   2. fullOutput 是 @Published，每次写都广播给 MTMDWrapperExample.outputText，
-    ///      再广播给 MBHomeViewController 的 sink，最终触发 cell 重绘 / boundingRect /
-    ///      tableView scroll 一整条主线程链
-    ///   3. 推理在后台跑得很快（几十 ms/token），意味着主线程被持续高频打扰
-    ///
-    /// 现象上的恶果：用户在生成期间点输入框 / 打字会感觉到"互斥卡顿"，第三方
-    /// 输入法 candidate accumulator 还会出现 `Result accumulator timeout: 3.0s`。
-    ///
-    /// 修复策略：本地变量 `accumulated` 全程累加，只在以下时机把它同步到
-    /// @Published fullOutput（触发广播）：
-    ///   - 第一个 token：让 UI 立刻有反馈（lastFlush 设为 distantPast）
-    ///   - 距上次 flush ≥ ``flushIntervalMs`` 毫秒：把刷新降到 ~20 fps，对人眼仍然丝滑
-    ///   - 生成结束：保证最后一段一定可见
-    ///
-    /// 主线程负载从"每 token 一次" → "≤20 次/秒"，下游 sink 链跟着减负。
+    /// 执行生成。节流：本地 accumulated 累加，只在「首 token / 距上次 flush ≥
+    /// flushIntervalMs / 结束」时同步到 @Published fullOutput。
+    /// 每 token 直写会把主线程打到 ~400 次/秒（属性 hop + sink 链 + cell 重绘），
+    /// 现象是打字卡顿、第三方输入法 candidate 超时。现在降到 ≤20 次/秒。
     private func performGeneration() async {
         guard let ctx = context else {
             updateGenerationState(.failed(.contextNotInitialized))
@@ -437,6 +489,8 @@ public class MTMDWrapper: ObservableObject {
         let flushIntervalMs: TimeInterval = 0.050
         // 用 distantPast 保证循环第一个 token 一定立即 flush，让 UI 立刻有反应。
         var lastFlush: Date = .distantPast
+        // 固定步数模式（基准）：只数真正生成的 token，不含预置的 <think> 前缀。
+        var nDecoded = 0
 
         // 生成循环
         while !Task.isCancelled {
@@ -476,6 +530,8 @@ public class MTMDWrapper: ObservableObject {
 
             // 检查是否生成完成
             if cToken.is_end {
+                lastPerf = mb_mtmd_perf_snapshot(ctx)
+                mb_mtmd_log_text("OUTPUT(full)", accumulated)
                 updateGenerationState(.completed)
                 print("MTMDWrapper: 生成完成: \(fullOutput)")
                 // 清理任务引用但不重置状态，让状态保持为 completed
@@ -485,22 +541,31 @@ public class MTMDWrapper: ObservableObject {
                 return
             }
 
+            // 固定步数模式：够了就停，不等 EOG。基准要的是固定解码步数，
+            // 否则生成长度随模型输出变化，t/s 会混入无关变量，跨 depth/设备不可比。
+            nDecoded += 1
+            if decodeTokenLimit > 0 && nDecoded >= decodeTokenLimit {
+                lastPerf = mb_mtmd_perf_snapshot(ctx)
+                mb_mtmd_log_text("OUTPUT(full)", accumulated)
+                updateGenerationState(.completed)
+                print("MTMDWrapper: 达到固定步数上限 \(decodeTokenLimit)，停止生成")
+                generationTask = nil
+                return
+            }
+
             // 避免过度占用 CPU
             try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
+
+        // 用户点了停止：仍留下这一轮已经跑过的 prefill / decode 数据。
+        lastPerf = mb_mtmd_perf_snapshot(ctx)
+        mb_mtmd_log_text("OUTPUT(interrupted)", accumulated)
     }
     
     /// 给同步阻塞型 C 调用包一层 watchdog 超时。
-    ///
-    /// 这里的 contract：
-    /// - `body` 一定要在某个后台线程上启动 C 调用，并把它的成功 / 失败用
-    ///   `resumeOnce` 上报。`resumeOnce` 自带 idempotency，多次调用只生效首次。
-    /// - watchdog 在 `timeoutSeconds` 后会再调 `resumeOnce(.failure(.timeout))`，
-    ///   如果 body 的 success / failure 已经先到，watchdog 是 no-op。
-    /// - 反过来如果 watchdog 先到，body 后到的 resumeOnce 是 no-op，但 C 调用
-    ///   仍会在后台跑完。这是有意为之 —— 我们没法中断同步 C API，但至少不
-    ///   让 UI 永远等。下一次进入会先 `mb_mtmd_clean_kv_cache` / reset，
-    ///   被孤儿化的那次推理对状态没有持续污染。
+    /// body 必须在后台线程启动 C 调用并用 resumeOnce 上报；watchdog 先到则 body
+    /// 的 resumeOnce 变 no-op，但 C 调用仍会跑完（不可中断）。下一次进入会先
+    /// clean_kv_cache，被孤儿化的那次推理不留污染。
     private func runWithWatchdog(
         timeoutSeconds: TimeInterval,
         timeoutMessage: String,

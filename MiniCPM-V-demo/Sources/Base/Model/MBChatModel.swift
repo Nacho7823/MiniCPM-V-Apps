@@ -28,6 +28,9 @@ public class MBChatModel: NSObject {
     
     /// 性能日志
     var performLog: String?
+
+    /// iPad：本轮 prefill / decode 速度，显示在复制按钮旁
+    var speedLog: String?
     
     /// 多模态加载图片、clip 的总进度【0 - 1】
     var processProgress: CGFloat = 0.0

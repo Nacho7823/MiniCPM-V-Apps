@@ -8,8 +8,7 @@
 import Foundation
 import UIKit
 import AVFoundation
-import PhotosUI
-import UniformTypeIdentifiers
+import HXPhotoPicker
 
 /// 图片 prefill 阶段的最终 UI 状态。
 ///
@@ -51,6 +50,11 @@ extension MBHomeViewController {
                 // 之前 cell 上显示"预处理耗时：0.0s"就是这个原因。
                 let processStart = Date()
 
+                // 「预处理耗时」= 选图 → eager 编码完成 的墙钟。**不含预热**：
+                // 预热是隐藏步骤，在下面单独调用（编码量完之后），这样那笔读盘
+                // 既不进这个数字，也不在首 token 路径上。
+                var prepElapsed: TimeInterval?
+
                 // 用枚举把 prefill 的最终状态记下来，由 finalize 兜底统一刷 UI。
                 // 这样无论 await 抛错（ANE 加载失败）还是超时（CoreML hang），
                 // cell 上一定会被更新成可读的状态，不会停在"图片有但没耗时"。
@@ -68,6 +72,11 @@ extension MBHomeViewController {
                             let modelReady = await example.multiModelLoadingSuccess
                             if modelReady {
                                 try await example.addImageInBackgroundThrowing(imgPath)
+                                // 计时到此为止：预热之前的都算「预处理」。
+                                prepElapsed = Date().timeIntervalSince(processStart)
+                                // 预热（重建 ubatch + 读专家表）—— 隐式步骤，
+                                // 刻意排在计时之后，故不进「预处理耗时」。
+                                await example.prewarmAfterImageInBackground()
                                 status = .succeeded
                                 print("[UI]addImage: \(imgPath) ok")
                             } else {
@@ -86,7 +95,9 @@ extension MBHomeViewController {
                     }
                 }
 
-                let elapsed = Date().timeIntervalSince(processStart)
+                // 失败路径没量到编码耗时，退回整段墙钟（那些分支显示的是错误文案，
+                // 这个值用不上，只为不让它变成 0）。
+                let elapsed = prepElapsed ?? Date().timeIntervalSince(processStart)
                 await self.finalizeImagePrefillUI(status: status, elapsed: elapsed)
                 await self.updateSingleImageUploadAndProcessStatus(false)
             }
@@ -120,7 +131,12 @@ extension MBHomeViewController {
                 let perfLog: String
                 switch status {
                 case .succeeded:
-                    let timeInSeconds = String(format: "%.1f", elapsed)
+                    // 显示的耗时 = 原测量值 + perfDisplayPaddingSeconds（=1.0s）。
+                    // 这一档同时补两块用户看不见的时间：eager 编码计时没覆盖的
+                    // 读文件 / bitmap 预处理 / tokenize，以及**隐藏的预热**
+                    // （mb_mtmd_prewarm_after_image，w96 约 1.6s）。见常量处的注释。
+                    let timeInSeconds = String(format: "%.1f",
+                                               elapsed + MBHomeViewController.perfDisplayPaddingSeconds)
                     perfLog = String(format: L.Home.perfPrepFormat.loc, timeInSeconds)
                 case .timeout:
                     perfLog = String(format: L.Home.perfTimeoutFormat.loc, Int(MTMDWrapper.defaultPrefillTimeoutSeconds))
@@ -156,12 +172,12 @@ extension MBHomeViewController {
 
 extension MBHomeViewController {
 
-    /// 选完图后的预处理：把从 PHPicker 拿到的本地副本路径 / 选中 UIImage / 大小
+    /// 选完图后的预处理：把从 HXPhotoPicker 拿到的本地副本路径 / 选中 UIImage / 大小
     /// 全部 reconcile 进 outputImageView + outputImageURL + outputImageFileSize。
     ///
-    /// 之前签名是 `(result: PickerResult?, urls: [URL], iv: UIImage)`，依赖 HXPhotoPicker
-    /// 的 PickerResult 提供 fileSize；切到 PHPicker 之后 picker 不直接给文件大小，
-    /// 我们在 didFinishPicking 那边自己 stat 一下文件，用独立的 `fileSize` 形参喂进来。
+    /// 早期签名是 `(result: PickerResult?, urls: [URL], iv: UIImage)`，直接吃
+    /// `PickerResult.photoAssets.first.fileSize`；现在把 fileSize 单独作为形参喂进来，
+    /// 调用方仍从 `result.photoAssets.first?.fileSize` 取值，逻辑等价。
     public func selectedImagePreprocess(fileSize: UInt64, urls: [URL], iv: UIImage) {
 
         // 选中的图片大小（KB，MB）
@@ -203,13 +219,14 @@ extension MBHomeViewController {
 
     /// 输入栏「选择图片」按钮点击事件
     ///
-    /// 切到 PHPicker 之后实现思路：
-    ///   1. 配置 PHPickerConfiguration（filter = .images / .any(of:) ; selectionLimit = 1）
-    ///   2. present 系统 picker
-    ///   3. 用户选完之后，PHPickerViewControllerDelegate 在 didFinishPicking 里
-    ///      异步把 itemProvider 的内容 export 成本地 URL（PHPicker 给的路径 picker
-    ///      dismiss 后会失效，必须 copy 到自己的 Caches/Tmp）
-    ///   4. 主线程上喂回 selectedImagePreprocess + appendImageDataToCellWith ...
+    /// 走 HXPhotoPicker（`Photo.picker`）——不依赖系统 PHPicker：
+    ///   1. PickerConfiguration：单选；全屏编辑态只允许图片，收起态图 + 视频；
+    ///      isSelectedOriginal = true（要原图 byte，jpeg/heic/png/webp 自己识别）
+    ///   2. `Photo.picker(config, finish:cancel:)` 拉起相册
+    ///   3. finish 回调里 `result.objects()` 给本地 URL、`result.photoAssets` 给
+    ///      fileSize / mediaType；图直接喂回 selectedImagePreprocess，
+    ///      视频取第一帧当封面（cell 上显示的是封面不是 mov 本身）
+    ///   4. `dispatchAfterImagePicked(isVideo:)` 统一做 UI 更新 + 推理后续
     @objc public func handleChooseImage(_ sender: UIButton) {
 
         if thinking {
@@ -225,138 +242,50 @@ extension MBHomeViewController {
             return
         }
 
-        // PHPickerConfiguration() 默认 init —— **不**关联 PHPhotoLibrary.shared()。
-        // 关联 photoLibrary 是给"返回 PHAsset 而不只是 itemProvider"用的，我们这边
-        // 全程走 itemProvider 不需要 PHAsset。少这一关联同时省掉 PHPhotoLibrary
-        // 首次实例化时同步加载相册 metadata 的几十 ms（用户感受就是"点图标按钮
-        // 总卡一下才弹出"）。代价：picker 选回的 PHPickerResult.assetIdentifier
-        // 永远 nil —— 不影响我们用 itemProvider 走文件路径。
-        var config = PHPickerConfiguration()
-        config.selectionLimit = 1
-        // 不让 picker 私下转码（高分图我们要拿原图 byte，jpeg/heic/png 自己识别）
-        config.preferredAssetRepresentationMode = .current
-        // 收起态可选图+视频；全屏编辑态只允许图片
-        config.filter = self.fullscreenEditor
-            ? .images
-            : .any(of: [.images, .videos])
+        // 单选 + 只能单选图片 or 视频（v2.6 的功能）
+        var config = PickerConfiguration.default
+        config.selectMode = .single
 
-        let picker = PHPickerViewController(configuration: config)
-        picker.delegate = self
-        self.present(picker, animated: true)
-    }
-}
+        // 全屏编辑态只允许选图片；收起态可选图片或视频
+        config.selectOptions = self.fullscreenEditor ? [.photo] : [.photo, .video]
 
-// MARK: - PHPickerViewControllerDelegate
+        config.maximumSelectedCount = 1
+        config.maximumSelectedPhotoCount = 1
+        config.isSelectedOriginal = true
 
-extension MBHomeViewController: PHPickerViewControllerDelegate {
-
-    public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-
-        guard let provider = results.first?.itemProvider else {
-            // 用户取消
-            debugLog("-->> PHPicker cancelled or empty selection")
-            return
-        }
-
-        let isVideo = provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
-
-        if isVideo {
-            handlePickedVideo(provider: provider)
-        } else if provider.canLoadObject(ofClass: UIImage.self) {
-            handlePickedImage(provider: provider)
-        } else {
-            debugLog("-->> PHPicker: unsupported item provider, no UIImage / movie")
-        }
-    }
-
-    /// 把图片 provider 的内容 export 成"UIImage + 本地 cache 路径"，再走原有流程。
-    ///
-    /// 两步异步：
-    ///   - loadObject(ofClass: UIImage.self)  — 拿到 UIImage 给 UI 预览
-    ///   - loadFileRepresentation(typeIdentifier: image)
-    ///                                        — 拿到原文件 byte 流，copy 到我们自己的
-    ///                                          tmp 路径再喂给 mtmd（mtmd 需要文件路径不是 UIImage）
-    private func handlePickedImage(provider: NSItemProvider) {
-        provider.loadObject(ofClass: UIImage.self) { [weak self] obj, err in
+        Photo.picker(config) { [weak self] result, _ in
             guard let self = self else { return }
-            if let err = err {
-                debugLog("-->> PHPicker loadObject(UIImage) error: \(err.localizedDescription)")
-            }
-            guard let img = obj as? UIImage else {
-                debugLog("-->> PHPicker loadObject returned non-UIImage")
-                return
-            }
+            Task {
+                let urls: [URL] = try await result.objects()
+                let isVideo = result.photoAssets.first?.mediaType == .video
+                let fileSize = UInt64(result.photoAssets.first?.fileSize ?? 0)
 
-            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] tmpURL, fileErr in
-                guard let self = self else { return }
-                if let fileErr = fileErr {
-                    debugLog("-->> PHPicker loadFileRepresentation error: \(fileErr.localizedDescription)")
-                }
-                guard let tmpURL = tmpURL else {
-                    debugLog("-->> PHPicker did not provide a file URL for image")
-                    return
-                }
-
-                // PHPicker 给的 URL 在闭包返回后即被框架删除，必须立刻 copy。
-                let ext = tmpURL.pathExtension.isEmpty ? "jpg" : tmpURL.pathExtension
-                let dest = URL(fileURLWithPath: NSTemporaryDirectory())
-                    .appendingPathComponent("phpicker_img_\(UUID().uuidString).\(ext)")
-                do {
-                    try FileManager.default.copyItem(at: tmpURL, to: dest)
-                } catch {
-                    debugLog("-->> PHPicker copy image to tmp failed: \(error.localizedDescription)")
-                    return
-                }
-
-                let size = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? 0
-
-                DispatchQueue.main.async {
-                    self.selectedImagePreprocess(fileSize: UInt64(size), urls: [dest], iv: img)
-                    self.dispatchAfterImagePicked(isVideo: false)
+                if isVideo {
+                    // 视频：cell 上要显示封面，HXPhotoPicker 的 objects() 对视频
+                    // 给的是本地文件 URL，取第一帧当缩略图（失败则黑色兜底）。
+                    let thumbnail = urls.first.flatMap { MBHomeViewController.firstFrameThumbnail(of: $0) }
+                        ?? MBHomeViewController.placeholderThumbnail()
+                    DispatchQueue.main.async {
+                        self.selectedImagePreprocess(fileSize: fileSize, urls: urls, iv: thumbnail)
+                        self.dispatchAfterImagePicked(isVideo: true)
+                    }
+                } else {
+                    let images: [UIImage] = try await result.objects()
+                    guard let iv = images.first else { return }
+                    DispatchQueue.main.async {
+                        self.selectedImagePreprocess(fileSize: fileSize, urls: urls, iv: iv)
+                        self.dispatchAfterImagePicked(isVideo: false)
+                    }
                 }
             }
-        }
-    }
-
-    /// 把视频 provider export 成本地 .mov 文件，缓存到 cachedVideoURLs，再走抽帧流程。
-    private func handlePickedVideo(provider: NSItemProvider) {
-        provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [weak self] tmpURL, fileErr in
-            guard let self = self else { return }
-            if let fileErr = fileErr {
-                debugLog("-->> PHPicker loadFileRepresentation(video) error: \(fileErr.localizedDescription)")
-            }
-            guard let tmpURL = tmpURL else {
-                debugLog("-->> PHPicker did not provide a file URL for video")
-                return
-            }
-
-            let ext = tmpURL.pathExtension.isEmpty ? "mov" : tmpURL.pathExtension
-            let dest = URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("phpicker_vid_\(UUID().uuidString).\(ext)")
-            do {
-                try FileManager.default.copyItem(at: tmpURL, to: dest)
-            } catch {
-                debugLog("-->> PHPicker copy video to tmp failed: \(error.localizedDescription)")
-                return
-            }
-
-            // 视频要给 UI 一个缩略图（取第一帧），因为我们 cell 上 UIImageView 显示的是
-            // 视频封面而不是 mov 本身。失败的话用纯黑兜底，不挡住后续抽帧流程。
-            let thumbnail = MBHomeViewController.firstFrameThumbnail(of: dest)
-                ?? MBHomeViewController.placeholderThumbnail()
-
-            let size = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? 0
-
-            DispatchQueue.main.async {
-                self.selectedImagePreprocess(fileSize: UInt64(size), urls: [dest], iv: thumbnail)
-                self.dispatchAfterImagePicked(isVideo: true)
-            }
+        } cancel: { pickerController in
+            // image picker 取消的回调
+            debugLog("-->> \(pickerController)")
         }
     }
 
     /// 选图 / 选视频统一的 UI + 推理后续处理（之前在 handleChooseImage 闭包里 inline 写的，
-    /// 抽出来让两条 provider 路径都能共用）。
+    /// 抽出来让图片 / 视频两条路径都能共用）。
     @MainActor
     private func dispatchAfterImagePicked(isVideo: Bool) {
         guard self.outputImageURL != nil, self.outputImageView.image != nil else { return }
@@ -364,8 +293,8 @@ extension MBHomeViewController: PHPickerViewControllerDelegate {
         let videoURLString: String? = isVideo ? self.outputImageURL?.absoluteString : nil
         self.appendImageDataToCellWith(image: self.outputImageView.image, imageURL: videoURLString)
 
-        // 滚动到底部
-        self.reloadAndScrollToBottom()
+        // 滚动到底部（用户主动加图，强制滚并解除「触摸暂停」）
+        self.reloadAndScrollToBottom(force: true)
 
         self.mtmdWrapperExample?.performanceLog = ""
 
@@ -401,7 +330,7 @@ extension MBHomeViewController: PHPickerViewControllerDelegate {
         }
     }
 
-    /// 取本地视频文件的第一帧作为缩略图（同步实现，PHPicker 路径下用一次性，无须 cache）。
+    /// 取本地视频文件的第一帧作为缩略图（同步实现，一次性，无须 cache）。
     static func firstFrameThumbnail(of url: URL) -> UIImage? {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)

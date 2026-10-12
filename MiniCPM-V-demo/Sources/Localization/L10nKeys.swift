@@ -52,7 +52,32 @@ public enum L {
         public static let sectionOther       = "settings.section.other"
 
         public static let rowLanguage        = "settings.row.language"
+        public static let rowLookaheadPrefetchDepth       = "settings.row.lookaheadPrefetchDepth"
+        public static let rowDspark          = "settings.row.dspark"
         public static let rowAbout           = "settings.row.about"
+        public static let dsparkHint         = "settings.dspark.hint"
+        public static let dsparkDraftMissingTitle    = "settings.dspark.draftMissing.title"
+        public static let dsparkDraftMissingBody     = "settings.dspark.draftMissing.body"
+        public static let dsparkDraftDownloadAction  = "settings.dspark.draftMissing.download"
+        public static let lookaheadPrefetchDepthTitle     = "settings.lookaheadPrefetchDepth.title"
+        public static let lookaheadPrefetchDepthMessage   = "settings.lookaheadPrefetchDepth.message"
+        public static let lookaheadPrefetchDepthOff       = "settings.lookaheadPrefetchDepth.off"
+        public static let lookaheadPrefetchDepthHint      = "settings.lookaheadPrefetchDepth.hint"
+        public static let rowCacheWindow                  = "settings.row.cacheWindow"
+        public static let cacheWindowTitle                = "settings.cacheWindow.title"
+        public static let cacheWindowMessage              = "settings.cacheWindow.message"
+        public static let cacheWindowAuto                 = "settings.cacheWindow.auto"
+        public static let cacheWindowHint                 = "settings.cacheWindow.hint"
+        public static let cacheWindowRevertedTitle        = "settings.cacheWindow.reverted.title"
+        public static let cacheWindowRevertedBody         = "settings.cacheWindow.reverted.body"
+        public static let rowPrewarm                      = "settings.row.prewarm"
+        public static let rowShowPerfSpeed                = "settings.row.showPerfSpeed"
+        public static let showPerfSpeedHint               = "settings.showPerfSpeed.hint"
+        public static let prewarmTitle                    = "settings.prewarm.title"
+        public static let prewarmMessage                  = "settings.prewarm.message"
+        public static let prewarmOff                      = "settings.prewarm.off"
+        public static let rowStreamingMarkdown            = "settings.row.streamingMarkdown"
+        public static let streamingMarkdownHint           = "settings.streamingMarkdown.hint"
 
         public static let statusInUse        = "settings.status.inUse"
 
@@ -261,14 +286,28 @@ public enum L {
 
     public enum Welcome {
         public static let presetDescribeImage    = "welcome.preset.describeImage"
-        // Right-hand preset on the multimodal welcome view. The value is
-        // the fixed string "Describe the image." in BOTH zh and en — by
-        // product decision the prompt is sent to the model as English
-        // regardless of UI language, so it lives in the dictionaries
-        // (instead of being hardcoded) only to keep the welcome view
-        // call site uniform with the rest of i18n.
+        // 原版的英文描述图片气泡：点按发送标题本身（不挂长文）。
         public static let presetDescribeTheImage = "welcome.preset.describeTheImage"
+        public static let presetBeijingIntro     = "welcome.preset.beijingIntro"
         public static let presetSpringPoem       = "welcome.preset.springPoem"
+
+        // DSpark 基准测试用例选择器（见 MBDSparkBenchPrompt）：气泡上显示本地化短名，
+        // 真正发送的是固定英文原文（必须与 Mac 端用例逐字节一致，否则两端速度不可比）。
+        public static let presetCasePicker      = "welcome.preset.casePicker"
+        public static let presetCaseTitle       = "welcome.preset.case.title"
+        public static let presetCaseCancel      = "welcome.preset.case.cancel"
+        public static let presetCasePolynomial  = "welcome.preset.case.polynomial"
+        // 内存探测按钮（与基准用例同一行，当前隐藏）
+        public static let presetMemProbe        = "welcome.preset.memProbe"
+        public static let presetMemProbeTitle   = "welcome.preset.memProbe.title"
+        public static let presetMemProbeRunning = "welcome.preset.memProbe.running"
+        public static let presetMemProbeHint    = "welcome.preset.memProbe.hint"
+        public static let presetMemProbeClose   = "welcome.preset.memProbe.close"
+        public static let presetMemProbeCancel  = "welcome.preset.memProbe.cancel"
+        public static let presetCaseInclusion   = "welcome.preset.case.inclusion"
+        public static let presetCaseParking     = "welcome.preset.case.parking"
+        public static let presetCaseThermo      = "welcome.preset.case.thermo"
+        public static let presetCaseMajority    = "welcome.preset.case.majority"
 
         // Subtitle on the welcome view, two variants: language-only or
         // multimodal model. We keep them as separate keys (rather than one

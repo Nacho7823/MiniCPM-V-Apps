@@ -78,6 +78,39 @@ import llama
     /// 64 或 256 的小值，避免在多 slice 大图 prefill 时被 jetsam 杀掉。
     public let imageMaxTokens: Int
 
+    /// MoE SSD experts 目录（含 manifest.json + 分层 expert bin）。空字符串 = 关闭。
+    public let moeExpertsPath: String
+
+    /// 每层常驻内存的 expert 槽位数。experts 开启时必须 > 0。
+    public let moeSlotBank: Int
+
+    /// 每层 decode 缓存的窗口宽度（slot 数）。0 = 不启用按层窗口（走共享 bank）。
+    /// 由 app 按可用内存与 experts 每 slot 字节算出，见 MiniCPMV47Const.decodeWindow()。
+    public let moeDecodeWindow: Int
+
+    /// 跳层专家预读数（look-ahead expert prefetch）。0 = 关闭；1..16 = 预读数量。仅 experts 路径有效。
+    public let moeLookaheadPrefetchDepth: Int
+
+    /// 缓存预热档位（引擎 `LLAMA_MOE_PREWARM`）。0 = 关闭；8/16/32/48/64/96 = 每层预读这么多
+    /// 个「开头最常用」的专家。表内嵌在 bridge（MBPrewarmTable.h）。改完需重载模型。
+    public let moePrewarmLevel: Int
+
+    /// 预热用哪张内嵌表（仅 `moePrewarmLevel > 0` 时生效）：
+    ///   0 = 默认加权表（大小 = `moePrewarmLevel`）
+    ///   1..4 = K=4 集群表（total 目标，每层 96 条）
+    ///   5..8 = K=4 集群表（bottleneck 目标，每层 96 条）
+    /// 集群表由 35BA3B 的 12 个 showcase case 聚类而来（见 warmup/run12/clusters/）。
+    public let moePrewarmTableId: Int
+
+    /// DSpark 草稿模型路径（GGUF）。空字符串 = 关闭投机解码。
+    /// 与 `moeExpertsPath` 同一约定：作为 init 的独立参数传，由 MTMDWrapper 用 `withCString` 包住。
+    public let draftModelPath: String
+
+    /// DSpark 每轮草稿数 `n_max`。0 = 关闭投机（默认）；1..16 = 草稿块宽度。
+    /// 只有 `draftModelPath` 非空且本字段 > 0 时才启用；启用后 bridge 会设
+    /// `LLAMA_MOE_WINDOW_MAX_ROWS = n_max + 1` 与目标/草稿 context 的 `n_rs_seq = n_max`。
+    public let specDraftNMax: Int
+
     /// 初始化方法
     /// - Parameters:
     ///   - modelPath: 模型路径
@@ -90,9 +123,8 @@ import llama
     ///     v46 模型本身 max_position_embeddings ≥ 32K，远高于 8192；
     ///     KV 多占约 270 MB，iPhone 14 Pro 及以上完全 hold 得住。
     ///   - nThreads: 线程数，默认 4
-    ///   - temperature: 温度参数，默认 0.7（对齐模型 generation_config.json：
-    ///     do_sample=true, temperature=0.7, top_k=0, top_p=1.0, repetition_penalty=1.0；
-    ///     top_k 与 top_p 由 MBMtmd.mm 内部统一设为禁用值，纯温度采样）
+    ///   - temperature: 温度参数，默认 0.7（>0 走纯温度采样）。0 为贪心（结果可控），
+    ///     可用 `MB_TEMP=0` 启动参数覆盖；top_k / top_p 由 MBMtmd.mm 禁用。
     ///   - useGPU: 是否使用 GPU，默认 false
     ///   - mmprojUseGPU: 多模态投影是否使用 GPU，默认 false
     ///   - warmup: 是否预热，默认 true
@@ -111,7 +143,15 @@ import llama
         warmup: Bool = true,
         nUbatch: Int = 0,
         imageMaxSliceNums: Int = -1,
-        imageMaxTokens: Int = -1
+        imageMaxTokens: Int = -1,
+        moeExpertsPath: String = "",
+        moeSlotBank: Int = 0,
+        moeDecodeWindow: Int = 0,
+        moeLookaheadPrefetchDepth: Int = 0,
+        moePrewarmLevel: Int = 0,
+        moePrewarmTableId: Int = 0,
+        draftModelPath: String = "",
+        specDraftNMax: Int = 0
     ) {
         self.modelPath = modelPath
         self.mmprojPath = mmprojPath
@@ -125,6 +165,14 @@ import llama
         self.nUbatch = nUbatch
         self.imageMaxSliceNums = imageMaxSliceNums
         self.imageMaxTokens = imageMaxTokens
+        self.moeExpertsPath = moeExpertsPath
+        self.moeSlotBank = moeSlotBank
+        self.moeDecodeWindow = moeDecodeWindow
+        self.moeLookaheadPrefetchDepth = moeLookaheadPrefetchDepth
+        self.moePrewarmLevel = moePrewarmLevel
+        self.moePrewarmTableId = moePrewarmTableId
+        self.draftModelPath = draftModelPath
+        self.specDraftNMax = specDraftNMax
     }
 
     /// 创建默认参数
@@ -157,6 +205,12 @@ import llama
         // -1 表示"按模型默认"，与 native 端约定一致。
         params.image_max_tokens      = Int32(imageMaxTokens)
         params.image_max_slice_nums  = Int32(imageMaxSliceNums)
+        params.moe_slot_bank         = Int32(moeSlotBank)
+        params.moe_decode_window     = Int32(moeDecodeWindow)
+        params.moe_lookahead_prefetch_depth        = Int32(moeLookaheadPrefetchDepth)
+        params.moe_prewarm_level     = Int32(moePrewarmLevel)
+        params.moe_prewarm_table_id  = Int32(moePrewarmTableId)
+        params.spec_draft_n_max      = Int32(specDraftNMax)
         return params
     }
 }

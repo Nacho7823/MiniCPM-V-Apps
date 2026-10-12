@@ -20,6 +20,7 @@
 		FA1ED0A82E225D5A00370614 /* ZipArchive in Frameworks */ = {isa = PBXBuildFile; productRef = FA1ED0A72E225D5A00370614 /* ZipArchive */; };
 		FA201B372C526CDD001FEA76 /* SwiftyCameraMainViewController+LiveStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA201B362C526CDD001FEA76 /* SwiftyCameraMainViewController+LiveStream.swift */; };
 		FA24495E2C3D0B6B0012D624 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = FA24495D2C3D0B6B0012D624 /* SnapKit */; };
+		FA2449642C3D0B7B0012D624 /* HXPhotoPicker in Frameworks */ = {isa = PBXBuildFile; productRef = FA2449632C3D0B7B0012D624 /* HXPhotoPicker */; };
 		FA244CC0199EA64B2C89A85F /* MBV5ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2CE11E1B73CD40A8A9DF3A /* MBV5ModelDownloadManager.swift */; };
 		FA2671C5E0ED774372B55129 /* MBV5ModelDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA610F148B7DE4F44AEBF62 /* MBV5ModelDetailViewController.swift */; };
 		FA2BA6A92C2D5AD8006C8193 /* MBHomeViewController+ImageProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2BA6A82C2D5AD8006C8193 /* MBHomeViewController+ImageProcess.swift */; };
@@ -89,6 +90,7 @@
 		FAD642B12E2A374900088528 /* MBModelDownloadHelperV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAD642B02E2A374900088528 /* MBModelDownloadHelperV2.swift */; };
 		FADE92CA2C3D1C36009FD00D /* MBHomeViewController+NavBarEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADE92C92C3D1C36009FD00D /* MBHomeViewController+NavBarEvent.swift */; };
 		FAE69AA92C181F4500E6D095 /* MBUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE69AA82C181F4500E6D095 /* MBUtils.swift */; };
+		FAE6DA562E210D2700A1E14F /* MBCLIPMetadataProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE6DA552E210D2700A1E14F /* MBCLIPMetadataProbe.swift */; };
 		FAE7CE472C25526B0080570C /* MBHomeViewController+SubscribeMessageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE7CE462C25526B0080570C /* MBHomeViewController+SubscribeMessageLog.swift */; };
 		FAE7CE492C25531F0080570C /* MBHomeViewController+UITextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAE7CE482C25531F0080570C /* MBHomeViewController+UITextView.swift */; };
 		FAEFA80E2C48BAD3009C2AEF /* SwiftyCameraOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAEFA8032C48BAD3009C2AEF /* SwiftyCameraOrientation.swift */; };
@@ -111,11 +113,11 @@
 		FEF20005AAAAABBBCCCCDDDD05 /* MBAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF10005AAAAABBBCCCCDDDD05 /* MBAudioPlayer.swift */; };
 		FEF20006AAAAABBBCCCCDDDD06 /* MBVoxcpm2ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF10006AAAAABBBCCCCDDDD06 /* MBVoxcpm2ModelDownloadManager.swift */; };
 		FEF20007AAAAABBBCCCCDDDD07 /* MBVoxcpm2ModelDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF10007AAAAABBBCCCCDDDD07 /* MBVoxcpm2ModelDetailViewController.swift */; };
-		FEF2000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF1000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift */; };
-		FEF2000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF1000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift */; };
 		FEF20008AAAAABBBCCCCDDDD08 /* TtsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF10008AAAAABBBCCCCDDDD08 /* TtsViewController.swift */; };
 		FEF20009AAAAABBBCCCCDDDD09 /* 默认女声.wav in Resources */ = {isa = PBXBuildFile; fileRef = FEF10009AAAAABBBCCCCDDDD09 /* 默认女声.wav */; };
 		FEF2000AAAAAAABBBCCCCDDDD0A /* 默认男声.wav in Resources */ = {isa = PBXBuildFile; fileRef = FEF1000AAAAAAABBBCCCCDDDD0A /* 默认男声.wav */; };
+		FEF2000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF1000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift */; };
+		FEF2000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF1000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -234,6 +236,7 @@
 		FAD642B02E2A374900088528 /* MBModelDownloadHelperV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBModelDownloadHelperV2.swift; sourceTree = "<group>"; };
 		FADE92C92C3D1C36009FD00D /* MBHomeViewController+NavBarEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MBHomeViewController+NavBarEvent.swift"; sourceTree = "<group>"; };
 		FAE69AA82C181F4500E6D095 /* MBUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBUtils.swift; sourceTree = "<group>"; };
+		FAE6DA552E210D2700A1E14F /* MBCLIPMetadataProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBCLIPMetadataProbe.swift; sourceTree = "<group>"; };
 		FAE7CE462C25526B0080570C /* MBHomeViewController+SubscribeMessageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MBHomeViewController+SubscribeMessageLog.swift"; sourceTree = "<group>"; };
 		FAE7CE482C25531F0080570C /* MBHomeViewController+UITextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MBHomeViewController+UITextView.swift"; sourceTree = "<group>"; };
 		FAEFA8032C48BAD3009C2AEF /* SwiftyCameraOrientation.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SwiftyCameraOrientation.swift; sourceTree = "<group>"; };
@@ -256,11 +259,11 @@
 		FEF10005AAAAABBBCCCCDDDD05 /* MBAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBAudioPlayer.swift; sourceTree = "<group>"; };
 		FEF10006AAAAABBBCCCCDDDD06 /* MBVoxcpm2ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBVoxcpm2ModelDownloadManager.swift; sourceTree = "<group>"; };
 		FEF10007AAAAABBBCCCCDDDD07 /* MBVoxcpm2ModelDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBVoxcpm2ModelDetailViewController.swift; sourceTree = "<group>"; };
-		FEF1000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBV526ModelDownloadManager.swift; sourceTree = "<group>"; };
-		FEF1000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBV526ModelDetailViewController.swift; sourceTree = "<group>"; };
 		FEF10008AAAAABBBCCCCDDDD08 /* TtsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TtsViewController.swift; sourceTree = "<group>"; };
 		FEF10009AAAAABBBCCCCDDDD09 /* 默认女声.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "默认女声.wav"; sourceTree = "<group>"; };
 		FEF1000AAAAAAABBBCCCCDDDD0A /* 默认男声.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "默认男声.wav"; sourceTree = "<group>"; };
+		FEF1000BAAAAABBBCCCCDDDD0B /* MBV526ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBV526ModelDownloadManager.swift; sourceTree = "<group>"; };
+		FEF1000CAAAAABBBCCCCDDDD0C /* MBV526ModelDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBV526ModelDetailViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -278,6 +281,7 @@
 			files = (
 				FACB0D162C157A3200AFA999 /* libswiftCoreAudio.tbd in Frameworks */,
 				FA3FA2812C11784B0077F732 /* Metal.framework in Frameworks */,
+				FA2449642C3D0B7B0012D624 /* HXPhotoPicker in Frameworks */,
 				FA3FA27F2C1178440077F732 /* Accelerate.framework in Frameworks */,
 				FA24495E2C3D0B6B0012D624 /* SnapKit in Frameworks */,
 				FABA27252E2DD9B900651C44 /* llama.xcframework in Frameworks */,
@@ -692,6 +696,7 @@
 			isa = PBXGroup;
 			children = (
 				FAAC6D1C2E223B0F00D45121 /* MiniCPMModelConst.swift */,
+				FAE6DA552E210D2700A1E14F /* MBCLIPMetadataProbe.swift */,
 			);
 			path = ModelConst;
 			sourceTree = "<group>";
@@ -805,6 +810,7 @@
 			name = "MiniCPM-V-demo";
 			packageProductDependencies = (
 				FA24495D2C3D0B6B0012D624 /* SnapKit */,
+				FA2449632C3D0B7B0012D624 /* HXPhotoPicker */,
 				FA1ED0A72E225D5A00370614 /* ZipArchive */,
 			);
 			productName = "MiniCPM-V-demo";
@@ -842,6 +848,7 @@
 			mainGroup = FA3FA25A2C1176E80077F732;
 			packageReferences = (
 				FA3D8FCE2C1FE7ED003DACDA /* XCRemoteSwiftPackageReference "SnapKit" */,
+				FA3D8FD42C1FE80F003DACDA /* XCRemoteSwiftPackageReference "HXPhotoPicker" */,
 				FA1ED0A62E225D5A00370614 /* XCRemoteSwiftPackageReference "ZipArchive" */,
 			);
 			productRefGroup = FA3FA2642C1176E80077F732 /* Products */;
@@ -970,6 +977,7 @@
 				FA9AB0112F03000200E00011 /* MarkdownEscape.swift in Sources */,
 				FA9AB0152F03000200E00015 /* MarkdownRenderer.swift in Sources */,
 				FA9AB0212F03000200E00021 /* ImageSliceSetting.swift in Sources */,
+				FAE6DA562E210D2700A1E14F /* MBCLIPMetadataProbe.swift in Sources */,
 				FA9AB0312F03000200E00031 /* MBImageSliceSettingAlert.swift in Sources */,
 				FAC2A1DB2C11B3DD00499465 /* MBImageTableViewCell.swift in Sources */,
 				FAEFA8142C48BAD3009C2AEF /* SwiftyCameraRecordButton.swift in Sources */,
@@ -1189,11 +1197,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_ENTITLEMENTS = "MiniCPM-V-demo/MiniCPM-V-demo.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.6;
+				CURRENT_PROJECT_VERSION = 2.7;
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = VGXUYC2C5K;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1208,12 +1216,14 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "MiniCPM-V-Demo";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "应用需要使用相机拍照才能进行内容识别。";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "此应用需要访问本地网络以下载模型文件";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "应用需要录音功能才能进行内容识别。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "App需要您的同意，才能访问相册用于上传图片。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "语音转文字。";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -1226,7 +1236,7 @@
 					"$(inherited)",
 					"$(SDKROOT)/usr/lib/swift",
 				);
-				MARKETING_VERSION = 2.6;
+				MARKETING_VERSION = 2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tianchi.minicpmvdemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1244,11 +1254,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_ENTITLEMENTS = "MiniCPM-V-demo/MiniCPM-V-demo.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.6;
+				CURRENT_PROJECT_VERSION = 2.7;
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = VGXUYC2C5K;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1263,12 +1273,14 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "MiniCPM-V-Demo";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "应用需要使用相机拍照才能进行内容识别。";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "此应用需要访问本地网络以下载模型文件";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "应用需要录音功能才能进行内容识别。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "App需要您的同意，才能访问相册用于上传图片。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "语音转文字。";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -1281,7 +1293,7 @@
 					"$(inherited)",
 					"$(SDKROOT)/usr/lib/swift",
 				);
-				MARKETING_VERSION = 2.6;
+				MARKETING_VERSION = 2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tianchi.minicpmvdemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1342,6 +1354,14 @@
 				version = 5.7.1;
 			};
 		};
+		FA3D8FD42C1FE80F003DACDA /* XCRemoteSwiftPackageReference "HXPhotoPicker" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SilenceLove/HXPhotoPicker.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.2.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1354,6 +1374,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FA3D8FCE2C1FE7ED003DACDA /* XCRemoteSwiftPackageReference "SnapKit" */;
 			productName = SnapKit;
+		};
+		FA2449632C3D0B7B0012D624 /* HXPhotoPicker */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FA3D8FD42C1FE80F003DACDA /* XCRemoteSwiftPackageReference "HXPhotoPicker" */;
+			productName = HXPhotoPicker;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
