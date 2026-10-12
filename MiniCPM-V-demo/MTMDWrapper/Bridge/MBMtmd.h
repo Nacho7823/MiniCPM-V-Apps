@@ -210,6 +210,10 @@ void mb_mtmd_perf_reset(mb_mtmd_context * ctx);
 // starts a new one. Safe to call with a NULL ctx (returns zeros).
 mb_mtmd_perf mb_mtmd_perf_snapshot(mb_mtmd_context * ctx);
 
+// Same counters as snapshot, but does not close the turn, log, or park memory.
+// Used to refresh the on-screen live speed while generation is still running.
+mb_mtmd_perf mb_mtmd_perf_peek(mb_mtmd_context * ctx);
+
 // Sample one token, decode it back into the KV cache, and return it.
 // Repeated calls drive generation forward until is_end becomes true (EOG).
 mb_mtmd_token mb_mtmd_loop(mb_mtmd_context * ctx);

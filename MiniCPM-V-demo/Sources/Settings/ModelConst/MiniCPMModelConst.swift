@@ -799,6 +799,20 @@ struct MiniCPMV47Const {
         UserDefaults.standard.set(on, forKey: showPerfSpeedDefaultsKey)
     }
 
+    /// 「实时速度」：生成过程中在输出框底部实时显示 decode t/s（与上面那个
+    /// 「显示 P/D 速度」分工不同 —— 那个只在**生成结束后**给最终值）。
+    static let liveTpsDefaultsKey = "show_live_tps"
+
+    static func liveTpsEnabled() -> Bool {
+        let ud = UserDefaults.standard
+        guard ud.object(forKey: liveTpsDefaultsKey) != nil else { return true }
+        return ud.bool(forKey: liveTpsDefaultsKey)
+    }
+
+    static func setLiveTpsEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: liveTpsDefaultsKey)
+    }
+
     /// 覆盖率（c / 一层专家总数），用于设置页显示。
     static func cacheWindowCoverage(_ c: Int) -> Double {
         Double(min(c, maxSlotBank)) / Double(maxSlotBank)

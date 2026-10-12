@@ -2827,6 +2827,23 @@ mb_mtmd_perf mb_mtmd_perf_snapshot(mb_mtmd_context * ctx) {
     return p;
 }
 
+// Same counters as snapshot, but does not close the turn, log, or park memory.
+// Used to refresh the on-screen live speed while generation is still running.
+mb_mtmd_perf mb_mtmd_perf_peek(mb_mtmd_context * ctx) {
+    mb_mtmd_perf p = {};
+    if (!ctx) return p;
+    p.prefill_tokens = ctx->perf_prefill_tokens;
+    p.decode_tokens  = ctx->perf_decode_tokens;
+    p.prefill_ms     = ctx->perf_prefill_ms;
+    p.decode_ms      = ctx->perf_decode_ms;
+    p.prep_ms        = ctx->perf_prep_ms;
+    p.moe_k_prefill  = ctx->moe_k_prefill;
+    p.moe_k_decode   = ctx->moe_k_decode;
+    p.image_tokens   = ctx->perf_image_tokens;
+    p.image_encode_ms = ctx->perf_image_ms;
+    return p;
+}
+
 // DSpark 投机一轮：采样锚点 → 起草 → 目标验证 → 受理/回滚 → 把已受理 token 灌进 spec_out。
 // 返回 spec_out 的第一个片段（也可能是「本轮无输出」）。
 static mb_mtmd_token mb_mtmd_loop_spec(mb_mtmd_context * ctx, double t0) {

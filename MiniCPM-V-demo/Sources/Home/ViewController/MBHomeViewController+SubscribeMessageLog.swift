@@ -26,6 +26,15 @@ extension MBHomeViewController {
                         if latestCell.model?.role == "llm", !receivedData.isEmpty {
                             
                             latestCell.model?.contentText = receivedData
+                            // 「实时速度」：流式期间把 decode t/s 写进 speedLog，工具条就会跟着刷。
+                            // 与「显示 P/D 速度」分工不同 —— 那个只在生成结束后给最终值。
+                            if MiniCPMV47Const.liveTpsEnabled() {
+                                let live = self?.mtmdWrapperExample?.livePerfDisplayString() ?? ""
+                                latestCell.model?.speedLog = live.isEmpty ? nil : live
+                            } else {
+                                // 实时关：本轮先清空，等生成完成后由「显示 P/D 速度」填最终值。
+                                latestCell.model?.speedLog = nil
+                            }
                             // 流式期间也上 markdown（走 StreamingMarkdownRenderer 增量解析）。
                             // 生成完成时 $performanceLog 回调会用 streaming: false 再渲染一次，
                             // 给出精确的最终排版。
@@ -136,7 +145,11 @@ extension MBHomeViewController {
 
                             if !log.isEmpty {
                                 lastModel?.hasBottomToolbar = true
-                                lastModel?.speedLog = self?.mtmdWrapperExample?.lastPerfDisplayString()
+                                // 完成后回填最终值（「显示 P/D 速度」关着时返回空串，
+                                // 这时**保留**流式期间写下的实时值，别把它清掉）。
+                                if let final = self?.mtmdWrapperExample?.lastPerfDisplayString(), !final.isEmpty {
+                                    lastModel?.speedLog = final
+                                }
                                 lastModel?.cellHeight = MBTextTableViewCell.calcCellHeight(data: lastModel, viewWidth: self?.view.frame.width ?? 0)
                             }
 

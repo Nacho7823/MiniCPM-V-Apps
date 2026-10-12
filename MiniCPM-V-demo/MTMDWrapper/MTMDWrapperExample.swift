@@ -426,6 +426,11 @@ public class MTMDWrapperExample: ObservableObject {
     public func lastPerfDisplayString() -> String {
         mtmdWrapper.lastPerfDisplayString()
     }
+
+    /// iPad 工具条：生成过程中的实时 decode tok/s
+    public func livePerfDisplayString() -> String {
+        mtmdWrapper.livePerfDisplayString()
+    }
     
     /// 重置
     /// 仅清 KV cache，保留 mtmd_context（轻量、毫秒级）。详见

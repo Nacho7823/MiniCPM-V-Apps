@@ -248,6 +248,12 @@ extension MBSettingsViewController: UITableViewDelegate {
                                               preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: L.Common.gotIt.loc, style: .default))
                 present(alert, animated: true)
+            } else if model.title == L.Settings.rowLiveTps.loc {
+                let alert = UIAlertController(title: L.Settings.rowLiveTps.loc,
+                                              message: L.Settings.liveTpsHint.loc,
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: L.Common.gotIt.loc, style: .default))
+                present(alert, animated: true)
             }
             return
         }
@@ -817,6 +823,20 @@ extension MBSettingsViewController {
             DispatchQueue.main.async { self?.loadTableViewData() }
         }
         section.append(showPerfSpeedModel)
+
+        // 实时速度：生成过程中就实时刷新 decode t/s（上面那个是**生成结束后**给最终值）。
+        // 两个开关各管一段、互不干扰：都关则不显示，都开则流式期间显示实时值、完成后换成最终值。
+        let liveTpsModel = MBSettingsModel()
+        liveTpsModel.title = L.Settings.rowLiveTps.loc
+        liveTpsModel.icon = UIImage(systemName: "speedometer")
+        liveTpsModel.isSwitchEnabled = true
+        liveTpsModel.switchIsOn = MiniCPMV47Const.liveTpsEnabled()
+        liveTpsModel.switchValueChanged = { [weak self] on in
+            MiniCPMV47Const.setLiveTpsEnabled(on)
+            NotificationCenter.default.post(name: .mbPerfSpeedVisibilityChanged, object: nil)
+            DispatchQueue.main.async { self?.loadTableViewData() }
+        }
+        section.append(liveTpsModel)
 
         // 实时渲染 Markdown 开关：**当前隐藏**（暂时不暴露该入口，代码保留，恢复时解注释即可）。
         // 默认关（流式期间纯文本，整段完成后一次上样式）；打开后走增量解析边生成边上样式，无需重载模型。

@@ -96,11 +96,15 @@ class MBTextTableViewCell: UITableViewCell {
     }()
 
     /// 工具条：prefill / decode 速度（复制按钮旁；iPhone / iPad 都显示）
-    /// 本轮要显示的速度文案；**受设置页开关控制**（关掉时返回 nil，即使模型里存着）。
+    /// 本轮要显示的速度文案；**受设置页两个开关控制**（都关掉时返回 nil，即使模型里存着）。
     ///
+    /// - 「显示 P/D 速度」管**生成结束后**的最终值；
+    /// - 「实时速度」管**生成过程中**的实时 decode 值。
+    ///
+    /// 两者各写各的 `speedLog`，所以这里只要有一个开着就显示。
     /// 不清模型里存的值 —— 再拨回来还能看到原数，不必重新生成。
     private var visibleSpeedLog: String? {
-        guard MiniCPMV47Const.showPerfSpeedEnabled() else { return nil }
+        guard MiniCPMV47Const.showPerfSpeedEnabled() || MiniCPMV47Const.liveTpsEnabled() else { return nil }
         guard let s = model?.speedLog, !s.isEmpty else { return nil }
         return s
     }
@@ -477,8 +481,10 @@ class MBTextTableViewCell: UITableViewCell {
                 }
                 
                 // llm 底部的【复制、重新生成、👍、🦶】toolbar
+                // 速度显示开着时，生成过程中同一行先只显示速度，结束后再露出复制。
                 if !text.isEmpty {
-                    if model?.hasBottomToolbar == true {
+                    let speedText = visibleSpeedLog
+                    if model?.hasBottomToolbar == true || speedText != nil {
                         
                         if model?.voteStatus == .neutral {
                             toolbarVoteupIcon.image = UIImage(named: "toolbar_voteup")
@@ -488,9 +494,28 @@ class MBTextTableViewCell: UITableViewCell {
                         toolBarContainerView.snp.updateConstraints { make in
                             make.height.equalTo(24)
                         }
-                        if let speed = visibleSpeedLog {
+                        // 速度行显示时把悬浮按钮让出来，避免和 toolbar 争位置
+                        actionPopupContainerView.snp.updateConstraints { make in
+                            make.height.equalTo(0)
+                        }
+                        // 生成过程中还没有最终排版，先不给复制按钮
+                        let copyVisible = model?.hasBottomToolbar == true
+                        toolbarCopyIcon.isHidden = !copyVisible
+                        toolbarCopyLabel.isHidden = !copyVisible
+                        if let speed = speedText {
                             toolbarSpeedLabel.text = speed
                             toolbarSpeedLabel.isHidden = false
+                            // 复制键隐藏后左边要贴到 0，否则会留下它的宽度
+                            toolbarSpeedLabel.snp.remakeConstraints { make in
+                                if copyVisible {
+                                    make.left.equalTo(toolbarCopyLabel.snp.right).offset(16)
+                                } else {
+                                    make.left.equalTo(0)
+                                }
+                                make.right.lessThanOrEqualTo(0)
+                                make.height.equalTo(24)
+                                make.centerY.equalTo(toolbarCopyIcon)
+                            }
                         } else {
                             toolbarSpeedLabel.text = nil
                             toolbarSpeedLabel.isHidden = true
@@ -611,7 +636,7 @@ class MBTextTableViewCell: UITableViewCell {
             : attrText.boundingRect(with: measureSize, options: .usesLineFragmentOrigin, context: nil).size
 
         var toolbarAreaHeight: CGFloat = 0
-        if model?.hasBottomToolbar == true {
+        if model?.hasBottomToolbar == true || visibleSpeedLog != nil {
             toolbarAreaHeight = 34
         }
 
@@ -699,7 +724,7 @@ class MBTextTableViewCell: UITableViewCell {
              */
             
             var toolbarAreaHeight = 0
-            if data?.hasBottomToolbar == true {
+            if data?.hasBottomToolbar == true || !(data?.speedLog ?? "").isEmpty {
                 toolbarAreaHeight = 24 + 10
             }
             

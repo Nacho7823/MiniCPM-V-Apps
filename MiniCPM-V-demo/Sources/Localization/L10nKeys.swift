@@ -77,6 +77,8 @@ public enum L {
         public static let rowPrewarm                      = "settings.row.prewarm"
         public static let rowShowPerfSpeed                = "settings.row.showPerfSpeed"
         public static let showPerfSpeedHint               = "settings.showPerfSpeed.hint"
+        public static let rowLiveTps                      = "settings.row.liveTps"
+        public static let liveTpsHint                     = "settings.liveTps.hint"
         public static let prewarmTitle                    = "settings.prewarm.title"
         public static let prewarmMessage                  = "settings.prewarm.message"
         public static let prewarmOff                      = "settings.prewarm.off"
@@ -185,6 +187,7 @@ public enum L {
     public enum Home {
         public static let title              = "home.title"
         public static let inputPlaceholder   = "home.input.placeholder"
+        public static let liveDecodeSpeed    = "home.liveDecodeSpeed"
 
         // Top-right toolbar
         public static let toolbarSettings    = "home.toolbar.settings"

@@ -69,6 +69,8 @@ extension LocalizationManager {
         L.Settings.rowPrewarm:                        "Cache prewarm (experts/layer)",
         L.Settings.rowShowPerfSpeed:                  "Show P/D speed",
         L.Settings.showPerfSpeedHint:                 "Show this turn\'s prefill / decode token rate in the toolbar under each reply (same numbers as the perf log line). Turn on while debugging or tuning, off when recording a demo. Display only - it does not affect inference.",
+        L.Settings.rowLiveTps:                        "Live speed",
+        L.Settings.liveTpsHint:                       "On = show decode speed at the bottom of the answer while it is generating, and leave the final number there. Off = hide it. Applies on the next reply; no model reload.",
         L.Settings.prewarmTitle:                      "Cache prewarm: experts per layer",
         L.Settings.prewarmMessage:                    "The expert cache starts empty each round. Prewarm reads the \"most-used-at-the-start\" experts into every layer's window before the first token (the table is measured offline and weighted toward a faster first token). The level is how many experts per layer -- larger means more hits, but more to read before the first token (~1.9 GiB at 48).\nCost: this read does not overlap compute, and it repeats every round. Reload the model to apply.",
         L.Settings.prewarmOff:                        "Off",
@@ -140,6 +142,7 @@ extension LocalizationManager {
 
         L.Home.title:                    "MiniCPM",
         L.Home.inputPlaceholder:         "Send a message",
+        L.Home.liveDecodeSpeed:          "Decode speed: %.1f t/s",
 
         L.Home.toolbarSettings:          "Settings",
         L.Home.toolbarTutorial:          "Tutorial",

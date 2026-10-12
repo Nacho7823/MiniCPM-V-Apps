@@ -65,6 +65,31 @@ public class MTMDWrapper: ObservableObject {
         prefill_tokens: 0, decode_tokens: 0, prefill_ms: 0, decode_ms: 0, prep_ms: 0,
         moe_k_prefill: 0, moe_k_decode: 0, image_tokens: 0, image_encode_ms: 0
     )
+
+    /// 生成过程中实时刷新的 decode 速度文案（「实时速度」开关打开时才更新）。
+    ///
+    /// 与 `lastPerf` 的分工：这个在流式期间每 ~50 ms 刷新一次，读的是
+    /// `mb_mtmd_perf_peek`（只取计数，不结束回合、不写日志、不落 park）。
+    public private(set) var liveSpeedText: String = ""
+
+    /// 实时速度的采样点：存**累计值**（tokens / ms），用最近若干 token 的增量算「当前速度」。
+    ///
+    /// 不能直接拿整回合累计值相除 —— 那会把冷启动热身永远算进分母。实测第 1 步的读盘量
+    /// 是稳态的 1.8 倍（c=25）到 6.7 倍（c=128），要 20~60 步才落稳；累计平均会系统性低估，
+    /// 且前 20 步抖得最厉害。
+    private struct LivePerfSample {
+        let tokens: Int32
+        let ms: Double
+    }
+    private var livePerfSamples: [LivePerfSample] = []
+    /// 滑动窗口长度：**按 token 个数**，不是按秒数。
+    ///
+    /// 用秒数会让平滑度随速率变化 —— 慢档 3.4 t/s 时 1 秒窗口里只有 3~4 个 token，
+    /// 边界抖动会让 Δtokens 在 2~5 之间跳，显示就在 2.0~5.0 t/s 来回摆（±40%）。
+    /// 固定 token 数后噪声恒定在 ±1/N，窗口时长自动适配（N=12：慢档约 3.5 s，快档约 1.2 s）。
+    private let livePerfTokenWindow = 12
+    /// 最近一个窗口算出的 decode 速度（t/s）。只供「实时速度」显示用。
+    private var liveDecodeRate: Double?
     
     /// 生成队列
     private let generationQueue = DispatchQueue(label: "com.mtmd.generation", qos: .userInitiated)
@@ -391,6 +416,31 @@ public class MTMDWrapper: ObservableObject {
         let d = tokPerSec(tokens: lastPerf.decode_tokens, ms: lastPerf.decode_ms)
         return String(format: "prefill %.1f t/s  decode %.1f t/s", p, d)
     }
+
+    /// 流式过程中的实时 decode 速度。开关关闭时返回空串，调用方据此隐藏。
+    ///
+    /// 只报 decode：prefill 在这时候早就结束了，混在一起反而看不出生成速度。
+    public func livePerfDisplayString() -> String {
+        liveSpeedText
+    }
+
+    /// 记一个 decode 采样点，用最近 N 个 token 的增量更新实时速度。
+    /// 只在 token 数增加时记录（否则同一计数被重复记录，窗口边界乱跳）。
+    /// 只服务「实时速度」开关；「显示 P/D 速度」走整回合平均，两者互不影响。
+    private func recordDecodeSample(_ perf: mb_mtmd_perf) {
+        guard perf.decode_tokens > 0 else { return }
+        if let last = livePerfSamples.last, last.tokens == perf.decode_tokens { return }
+        livePerfSamples.append(LivePerfSample(tokens: perf.decode_tokens, ms: perf.decode_ms))
+        // 量 N 个 token 的间隔需要 N+1 个点。
+        while livePerfSamples.count > livePerfTokenWindow + 1 {
+            livePerfSamples.removeFirst()
+        }
+        guard let oldest = livePerfSamples.first, livePerfSamples.count > 1 else { return }
+        let dTokens = Double(perf.decode_tokens - oldest.tokens)
+        let dMs = perf.decode_ms - oldest.ms
+        guard dTokens > 0, dMs > 0 else { return }
+        liveDecodeRate = dTokens / (dMs / 1000.0)
+    }
     
     /// 运行时调整单图最大切片数（无需 reload mmproj）：clip 每张图都会重读
     /// hparams.custom_image_max_slice_nums。n: 1=不切图，9=模型上限，-1=模型默认。
@@ -441,6 +491,9 @@ public class MTMDWrapper: ObservableObject {
         generationState = .idle
         currentToken = .empty
         fullOutput = ""
+        livePerfSamples.removeAll(keepingCapacity: true)
+        liveDecodeRate = nil
+        liveSpeedText = ""
         hasContent = false
         isTextOnlyModel = false
         modelVersion = 0
@@ -489,6 +542,11 @@ public class MTMDWrapper: ObservableObject {
         let flushIntervalMs: TimeInterval = 0.050
         // 用 distantPast 保证循环第一个 token 一定立即 flush，让 UI 立刻有反应。
         var lastFlush: Date = .distantPast
+        // 新回合：清掉上一回合的采样点。否则第一次求差会跨回合 —— 累计值已归零，
+        // 拿旧回合的大值当被减数会得到负数，窗口内又只剩一个点可用。
+        livePerfSamples.removeAll(keepingCapacity: true)
+        liveDecodeRate = nil
+        liveSpeedText = ""
         // 固定步数模式（基准）：只数真正生成的 token，不含预置的 <think> 前缀。
         var nDecoded = 0
 
@@ -524,6 +582,14 @@ public class MTMDWrapper: ObservableObject {
             let shouldFlush = cToken.is_end
                 || now.timeIntervalSince(lastFlush) >= flushIntervalMs
             if shouldFlush {
+                // 实时速度：读计数但不结束回合。此刻后台 mb_mtmd_loop 已返回、
+                // 下一次还没开始，所以读计数没有并发写。
+                if MiniCPMV47Const.liveTpsEnabled() {
+                    recordDecodeSample(mb_mtmd_perf_peek(ctx))
+                    liveSpeedText = liveDecodeRate.map { String(format: L.Home.liveDecodeSpeed.loc, $0) } ?? ""
+                } else {
+                    liveSpeedText = ""
+                }
                 fullOutput = accumulated
                 lastFlush = now
             }

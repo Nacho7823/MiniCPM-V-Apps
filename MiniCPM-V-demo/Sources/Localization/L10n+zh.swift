@@ -66,6 +66,8 @@ extension LocalizationManager {
         L.Settings.rowPrewarm:                        "缓存预热（每层专家数）",
         L.Settings.rowShowPerfSpeed:                  "显示 P/D 速度",
         L.Settings.showPerfSpeedHint:                 "在每条回复底部的工具条上显示本轮 prefill / decode 的 token 速度（与日志里 perf 行同一份数据）。调试和调参时打开，录制演示时关掉。只影响显示，不影响推理。",
+        L.Settings.rowLiveTps:                        "实时速度",
+        L.Settings.liveTpsHint:                       "开 = 生成过程中在输出框底部实时显示 decode 速度，结束后停在同一位置。关 = 不显示。下一轮生成即生效，不用重载模型。",
         L.Settings.prewarmTitle:                      "缓存预热：每层预读专家数",
         L.Settings.prewarmMessage:                    "每轮生成开始时专家缓存是空的。预热会在第一个 token 之前，先把「开头最常用的专家」一次性读进各层缓存（表是离线统计的，偏向更快的首响）。档位 = 每层预读多少个专家，越大命中越好、但首 token 之前要读的也越多（48 档约 1.9 GiB）。\n代价：这笔读盘不与计算重叠，且每轮都会重来一次。改完要重载模型才生效。",
         L.Settings.prewarmOff:                        "关",
@@ -137,6 +139,7 @@ extension LocalizationManager {
 
         L.Home.title:                    "MiniCPM",
         L.Home.inputPlaceholder:         "发消息",
+        L.Home.liveDecodeSpeed:          "实时解码速度：%.1f t/s",
 
         L.Home.toolbarSettings:          "设置",
         L.Home.toolbarTutorial:          "教程",
