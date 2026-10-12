@@ -33,6 +33,21 @@ static NSString * MBSafeCacheFileName(NSURL *url) {
     return [NSString stringWithFormat:@"%@.%@", base, ext];
 }
 
+/// Case-insensitive response-header lookup.
+///
+/// `allHeaderFields` keeps whatever case came over the wire, and HTTP/2 sends
+/// lowercase names. A plain `fields[@"Content-Length"]` therefore misses on
+/// HTTP/2 and reads back as 0 — which the downloader would misinterpret as
+/// "file already complete" (see the `_tmpSize == _totalSize` branch).
+static NSString * MBHeaderValue(NSHTTPURLResponse *response, NSString *name) {
+    for (NSString *key in response.allHeaderFields) {
+        if ([key caseInsensitiveCompare:name] == NSOrderedSame) {
+            return response.allHeaderFields[key];
+        }
+    }
+    return nil;
+}
+
 @interface FDownLoader () <NSURLSessionDataDelegate>
 {
     long long _tmpSize;
@@ -182,13 +197,13 @@ static NSString * MBSafeCacheFileName(NSURL *url) {
 didReceiveResponse:(NSHTTPURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
 
-    // 总大小 250523
-    // NSLog(@"%@",response);
-    // 本地缓存
-    _totalSize = [response.allHeaderFields[@"Content-Length"] longLongValue];
-    
-    NSString *contentRangeStr = response.allHeaderFields[@"content-range"];
-    
+// 取大小必须大小写不敏感：HTTP/2 头名是小写，allHeaderFields 保留原大小写，
+// 大写取法在 HTTP/2 上得 0 → `_tmpSize == _totalSize` 判成「已下载完整」→
+// 把不存在的文件报成 success。
+    _totalSize = [MBHeaderValue(response, @"Content-Length") longLongValue];
+
+    NSString *contentRangeStr = MBHeaderValue(response, @"Content-Range");
+
     if (contentRangeStr.length != 0) {
         _totalSize = [[contentRangeStr componentsSeparatedByString:@"/"].lastObject longLongValue];
     }
@@ -200,7 +215,9 @@ didReceiveResponse:(NSHTTPURLResponse *)response
     
     // 比对本地大小和总大小
     // 2.2.2.1 本地大小 == 总大小 ==>> 移动到下载完成的路径中.
-    if (_tmpSize == _totalSize) {
+    // 必须要求 _totalSize > 0：header 没解析出长度时会是 0，而 0 == 0 会把
+    // 一个不存在的文件当成"已下载完成"直接报 success。
+    if (_totalSize > 0 && _tmpSize == _totalSize) {
         // 1.移动到下载完成文件夹
         [FFileTool moveFile:self.downLoadingrPath toPath:self.downLoaderPath];
         // 2.取消本次请求

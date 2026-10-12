@@ -95,6 +95,9 @@ final class MBV47ModelDownloadManager: NSObject {
     private var fileState: [String: DownloadStatus] = [:]
     private var inFlight: Set<String> = []
     private var startTimes: [String: Date] = [:]
+    /// 每个文件已经尝试过几次。失败到上限就放弃，避免网络长时间不通时无限重试。
+    private var attempts: [String: Int] = [:]
+    private let maxAttemptsPerFile = 3
 
     var detailedProgressHandler: ((DownloadProgressInfo) -> Void)?
     var completionHandler: ((String, Bool) -> Void)?
@@ -119,8 +122,46 @@ final class MBV47ModelDownloadManager: NSObject {
         for f in variant.files {
             _ = helper(for: f)
         }
+        purgeStaleCacheEntries()
         reconcileStatusFromDisk()
         restoreDownloadProgress()
+    }
+
+    // MARK: - 残留缓存清理
+
+    /// 删掉「尺寸对不上」的缓存/临时文件。
+    ///
+    /// 为什么必须做：`FDownLoader` 一旦在缓存目录看到同名文件就直接报成功
+    /// （`if (fileExists(downLoaderPath)) { state = PauseSuccess; }`）。
+    /// 而下载失败时落下的残片（例如服务端返回 200 + 一小段错误 JSON）会让它
+    /// **永远下不到真文件**；更糟的是带 Range 续传会把残片和真数据拼成一个坏文件。
+    ///
+    /// 缓存文件名是 `FDownLoader` 私有的（`md5(url) + "." + ext`），这里按同样规则
+    /// 反推出来比对。
+    private func purgeStaleCacheEntries() {
+        let fm = FileManager.default
+        let caches = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first ?? ""
+        let tmp = NSTemporaryDirectory()
+        for f in variant.files {
+            for url in ["\(variant.hfBase)/\(f.remotePath)", "\(variant.msBase)/\(f.remotePath)"] {
+                guard let digested = url.md5() else { continue }
+                let ext = URL(string: url)?.pathExtension ?? "bin"
+                let name = "\(digested).\(ext)"
+                for dir in [caches, tmp] {
+                    let path = (dir as NSString).appendingPathComponent(name)
+                    guard fm.fileExists(atPath: path) else { continue }
+                    var size: Int64 = 0
+                    if let attrs = try? fm.attributesOfItem(atPath: path),
+                       let s = attrs[.size] as? Int64 {
+                        size = s
+                    }
+                    if size != f.bytes {
+                        try? fm.removeItem(atPath: path)
+                        debugLog("-->> 清理尺寸不符的下载残留 \(name)（\(size) != \(f.bytes)）")
+                    }
+                }
+            }
+        }
     }
 
     private func helper(for file: ModelDownloadFile) -> MBModelDownloadHelperV2? {
@@ -194,12 +235,22 @@ final class MBV47ModelDownloadManager: NSObject {
 
     // MARK: - 与磁盘对账
 
+    /// 与磁盘对账：只把**确实存在**的文件标成完成，绝不把已有状态（尤其 `.failed`）
+    /// 往回退成 `.notStarted`。
+    ///
+    /// 早先这里无条件写 `.notStarted`，而详情页每次 UI 刷新都会调它 —— 于是下载失败后
+    /// `.failed` 立刻被抹掉，`pump()` 又从头重试，形成无限重试循环（实测刷出 696 次
+    /// "多源 race 启动"、把 app 打崩）。
     func reconcileStatusFromDisk() {
         for f in variant.files {
-            let ok = isFileDownloaded(f)
+            let exists = isFileDownloaded(f)
             queue.sync {
-                fileState[f.localName] = ok ? .completed : .notStarted
-                if ok { fileProgress[f.localName] = 1.0 }
+                if exists {
+                    fileState[f.localName] = .completed
+                    fileProgress[f.localName] = 1.0
+                } else if fileState[f.localName] == nil {
+                    fileState[f.localName] = .notStarted
+                }
             }
         }
     }
@@ -245,6 +296,8 @@ final class MBV47ModelDownloadManager: NSObject {
             if isFileDownloaded(f) { return false }
             if queue.sync(execute: { inFlight.contains(f.localName) }) { return false }
             if queue.sync(execute: { fileState[f.localName] == .failed }) { return false }
+            // 试过太多次就放弃：网络长时间不通时不要一直重启，那只会把 app 刷崩。
+            if queue.sync(execute: { attempts[f.localName] ?? 0 }) >= maxAttemptsPerFile { return false }
             return true
         }
         let free = maxConcurrent - queue.sync { inFlight.count }
@@ -264,6 +317,7 @@ final class MBV47ModelDownloadManager: NSObject {
             fileState[file.localName] = .downloading
             startTimes[file.localName] = Date()
             fileProgress[file.localName] = 0
+            attempts[file.localName] = (attempts[file.localName] ?? 0) + 1
         }
 
         h.downloadV2(completionBlock: { [weak self] status, progress in
@@ -361,6 +415,7 @@ final class MBV47ModelDownloadManager: NSObject {
             fileProgress.removeAll()
             inFlight.removeAll()
             startTimes.removeAll()
+            attempts.removeAll()
         }
         for (_, h) in queue.sync(execute: { helpers }) {
             h.status = "download"

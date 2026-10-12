@@ -210,17 +210,27 @@ extension MBModelDownloadHelperV2 {
             self?.progress = Double(progress)
             completionBlock(self?.status ?? "", CGFloat(progress))
         } success: { [weak self] cachePath in
-            // 任何一个源 success 就锁定 settled，吞掉之后落败方的回调
-            race.lock.lock()
-            if race.settled {
+            // FDownLoader 报 success 不等于文件真的下好了：如果响应头没给出长度
+            // （HTTP/2 小写头名读不到 Content-Length），`_tmpSize == _totalSize`
+            // 会退化成 0 == 0，于是一个不存在的文件被当成"已完成"。
+            // 所以这里必须先确认文件确实落盘、且非空，否则这次 success 是假的 ——
+            // 绝不能 settle，否则会把另一个源（可能才是真能下完的）的成功也吞掉。
+            if let path = cachePath,
+               let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? Int64, size > 0 {
+                race.lock.lock()
+                if race.settled {
+                    race.lock.unlock()
+                    return
+                }
+                race.settled = true
                 race.lock.unlock()
-                return
-            }
-            race.settled = true
-            race.lock.unlock()
 
-            debugLog("-->> race[\(index)] success (winner)")
-            self?.handleDownloadSuccess(cachePath: cachePath, completionBlock: completionBlock)
+                debugLog("-->> race[\(index)] success (winner) size=\(size)")
+                self?.handleDownloadSuccess(cachePath: cachePath, completionBlock: completionBlock)
+            } else {
+                debugLog("-->> race[\(index)] 收到 success 但缓存文件不存在/为空，忽略")
+            }
         } failed: { [weak self] in
             race.lock.lock()
             race.failedCount += 1
@@ -245,17 +255,49 @@ extension MBModelDownloadHelperV2 {
     /// 单源 / racing 都共用一份逻辑。
     private func handleDownloadSuccess(cachePath: String?,
                                        completionBlock: @escaping (String, CGFloat) -> Void) {
-        guard let cachePath = cachePath else { return }
+        // 早退统一走这里：必须给上层一个终态，否则调用方永远收不到
+        // completionBlock（UI 卡在"下载中"），而中途视图可能已经被换掉。
+        func failNow(_ reason: String) {
+            debugLog("Error: \(reason)，判定下载失败")
+            DispatchQueue.main.async { [weak self] in
+                self?.status = "failed"
+                completionBlock("failed", -1)
+            }
+        }
+
+        guard let cachePath = cachePath else { failNow("cachePath 为空"); return }
         debugLog("-->> cachePath = \(cachePath)")
+
+        // 源文件必须真的存在：单源路径没有预校验，这里兜底。
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: cachePath),
+              let srcSize = attrs[.size] as? Int64, srcSize > 0 else {
+            failNow("cache 文件不存在或为空 (\(cachePath))")
+            return
+        }
+
         let fileURL = MBModelDownloadHelperV2.getFileURL(filename: self.filename)
         // 用 fileURLWithPath 更稳，避免路径里出现 % 或非 ASCII 时 URL(string:) parse 失败
         let cacheURL = URL(fileURLWithPath: cachePath)
         debugLog("-->> fileURL = \(fileURL.path)")
 
-        // 兜底确保 Documents 目录存在（理论上沙盒一定有，但实际遇到过 race）
+        // 兜底确保目标目录存在（理论上沙盒一定有，但实际遇到过 race）
+        //
+        // 必须检查返回值：`moveItem` 不会自动建中间目录，目录建不出来时它只会报一个
+        // 含糊的 code=4「the folder containing the latter doesn't exist」，
+        // 看起来像文件丢了，其实只是目标目录没建成。之前这里用 `try?` 把错误吞了。
         let docsURL = fileURL.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: docsURL.path) {
-            try? FileManager.default.createDirectory(at: docsURL, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: docsURL, withIntermediateDirectories: true)
+                debugLog("-->> 已创建目录 \(docsURL.path)")
+            } catch {
+                failNow("创建目录失败 \(docsURL.path): \(error.localizedDescription)")
+                return
+            }
+        }
+        guard FileManager.default.fileExists(atPath: docsURL.path) else {
+            failNow("目标目录仍不存在 \(docsURL.path)")
+            return
         }
 
         // 目标若已存在（旧 zip / 旧 gguf 残留）先删除，否则 moveItem 会抛

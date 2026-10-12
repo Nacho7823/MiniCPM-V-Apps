@@ -37,6 +37,8 @@ import llama
 
     private var rows: [Row] = []
     private var dataArray = [MBSettingsModel]()
+    /// 上一次整表刷新的时间，用于节流进度回调。
+    private var lastRowRefresh = Date.distantPast
 
     lazy var tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .grouped)
@@ -218,7 +220,8 @@ import llama
     private enum MainButtonState { case needsDownload, downloading, ready }
 
     private func currentButtonState() -> MainButtonState {
-        downloadManager.reconcileStatusFromDisk()
+        // 不要在这里调 reconcileStatusFromDisk()：那是 UI 查询，不该改下载状态。
+        // （早先它会把 .failed 抹成 .notStarted，配合 pump() 形成无限重试。）
         if downloadManager.allFilesDownloaded() { return .ready }
         if downloadManager.hasAnyDownloadActive() { return .downloading }
         return .needsDownload
@@ -299,7 +302,15 @@ import llama
 
     private func setupDownloadManagerCallbacks() {
         downloadManager.detailedProgressHandler = { [weak self] _ in
-            DispatchQueue.main.async { self?.refreshVisibleRows() }
+            // 节流：进度回调很密（每 token/每块），整表 reload 会把 UI 打爆。
+            // 50ms 一次对人眼已经连续，和下载器内部的 flush 节奏一致。
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let now = Date()
+                if now.timeIntervalSince(self.lastRowRefresh) < 0.05 { return }
+                self.lastRowRefresh = now
+                self.refreshVisibleRows()
+            }
         }
         downloadManager.completionHandler = { [weak self] _, success in
             DispatchQueue.main.async {
