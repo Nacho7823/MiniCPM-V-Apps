@@ -96,6 +96,11 @@ extension LocalizationManager {
         L.ModelDetail.mainButtonOneTapDownloadV46: "一键下载（约 1.6 GB）",
         L.ModelDetail.mainButtonOneTapDownloadV5:  "一键下载（约 656 MB）",
         L.ModelDetail.mainButtonOneTapDownloadV526: "一键下载（约 1.5 GB）",
+        L.ModelDetail.mainButtonOneTapDownloadV47Moe: "一键下载（约 15.6 GB）",
+        L.ModelDetail.mainButtonOneTapDownloadV471B:  "一键下载（约 1.8 GB）",
+        L.ModelDetail.v47RowMainModel:   "主模型",
+        L.ModelDetail.v47RowVisionTower: "视觉塔（mmproj）",
+        L.ModelDetail.v47RowExperts:     "专家分片（40 个）",
         L.ModelDetail.mainButtonDownloadingFormat: "下载中 %d%%",
         L.ModelDetail.mainButtonUseThis:          "使用该模型",
 

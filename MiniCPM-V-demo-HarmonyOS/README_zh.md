@@ -66,17 +66,17 @@ cd MiniCPM-V-demo-HarmonyOS
 也可以用 `hdc` 旁路侧载（推荐开发期使用，省下载时间）：
 
 ```bash
-# 1) 找到沙箱路径（包名固定 com.openbmb.minicpmv）
+# 1) 找到沙箱路径（包名固定 com.tianchi.minicpmv）
 hdc shell mount -t hmdfs   # 仅查看用，不要执行
-hdc shell aa start -a EntryAbility -b com.openbmb.minicpmv  # 启动一次让目录建好
+hdc shell aa start -a EntryAbility -b com.tianchi.minicpmv  # 启动一次让目录建好
 # 2) 推送模型（v-4.6 为例）
 hdc file send ./MiniCPM-V-4_6-Q4_K_M.gguf \
-  /data/app/el2/100/base/com.openbmb.minicpmv/haps/entry/files/models/minicpm-v-4_6-instruct/
+  /data/app/el2/100/base/com.tianchi.minicpmv/haps/entry/files/models/minicpm-v-4_6-instruct/
 hdc file send ./mmproj-model-f16.gguf \
-  /data/app/el2/100/base/com.openbmb.minicpmv/haps/entry/files/models/minicpm-v-4_6-instruct/
+  /data/app/el2/100/base/com.tianchi.minicpmv/haps/entry/files/models/minicpm-v-4_6-instruct/
 ```
 
-> 不同 OS 版本的沙箱根路径会有微小差异，如果上面命令写不进去，可以先在应用里随便点一次"下载"再 `hdc shell ls /data/app/el2/100/base/com.openbmb.minicpmv/...` 找到正确目录后再 `file send`。
+> 不同 OS 版本的沙箱根路径会有微小差异，如果上面命令写不进去，可以先在应用里随便点一次"下载"再 `hdc shell ls /data/app/el2/100/base/com.tianchi.minicpmv/...` 找到正确目录后再 `file send`。
 
 ---
 
@@ -85,7 +85,7 @@ hdc file send ./mmproj-model-f16.gguf \
 ```
 MiniCPM-V-demo-HarmonyOS/
 ├── AppScope/
-│   ├── app.json5                      # 包名 com.openbmb.minicpmv
+│   ├── app.json5                      # 包名 com.tianchi.minicpmv
 │   └── resources/                     # 应用级 icon
 ├── entry/
 │   ├── build-profile.json5            # ABI: arm64-v8a，CMake 参数与 Android 对齐

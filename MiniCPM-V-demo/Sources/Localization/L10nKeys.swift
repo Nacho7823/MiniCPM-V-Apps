@@ -123,6 +123,12 @@ public enum L {
         public static let mainButtonOneTapDownloadV46 = "modelDetail.mainButton.oneTap.v46"
         public static let mainButtonOneTapDownloadV5  = "modelDetail.mainButton.oneTap.v5"
         public static let mainButtonOneTapDownloadV526 = "modelDetail.mainButton.oneTap.v526"
+        public static let mainButtonOneTapDownloadV47Moe = "modelDetail.mainButton.oneTap.v47moe"
+        public static let mainButtonOneTapDownloadV471B  = "modelDetail.mainButton.oneTap.v471b"
+        // V4.7 detail rows
+        public static let v47RowMainModel   = "modelDetail.v47.row.mainModel"
+        public static let v47RowVisionTower = "modelDetail.v47.row.visionTower"
+        public static let v47RowExperts     = "modelDetail.v47.row.experts"
         // Format with %d for the percent value: "下载中 %d%%" / "Downloading %d%%"
         public static let mainButtonDownloadingFormat = "modelDetail.mainButton.downloadingFormat"
         public static let mainButtonUseThis  = "modelDetail.mainButton.useThis"

@@ -99,6 +99,11 @@ extension LocalizationManager {
         L.ModelDetail.mainButtonOneTapDownloadV46: "Download All (~1.6 GB)",
         L.ModelDetail.mainButtonOneTapDownloadV5:  "Download All (~656 MB)",
         L.ModelDetail.mainButtonOneTapDownloadV526: "Download All (~1.5 GB)",
+        L.ModelDetail.mainButtonOneTapDownloadV47Moe: "Download All (~15.6 GB)",
+        L.ModelDetail.mainButtonOneTapDownloadV471B:  "Download All (~1.8 GB)",
+        L.ModelDetail.v47RowMainModel:   "Main model",
+        L.ModelDetail.v47RowVisionTower: "Vision tower (mmproj)",
+        L.ModelDetail.v47RowExperts:     "Expert shards (40)",
         L.ModelDetail.mainButtonDownloadingFormat: "Downloading %d%%",
         L.ModelDetail.mainButtonUseThis:          "Use This Model",
 

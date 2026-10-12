@@ -13,6 +13,7 @@ xcuserdata/
 build/
 DerivedData/
 build-device/
+build-*/
 *.moved-aside
 *.pbxuser
 !default.pbxuser

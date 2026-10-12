@@ -172,8 +172,8 @@ data class ModelInfo(
                 acousticFileName = "VoxCPM2-Acoustic-F16.gguf",
                 hfRepo = "tc-mb/MiniCPM-V-Apps-gguf",
                 msRepo = "zerg13/MiniCPM-V-Apps-gguf",
-                directGgufUrl = "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-BaseLM-Q4_K_M.gguf",
-                directAcousticUrl = "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-Acoustic-F16.gguf",
+                directGgufUrl = null,
+                directAcousticUrl = null,
                 ggufMd5 = "d8cd571526464d225187d326caa289be",
                 acousticMd5 = "0f16229cfffe935102d21433f6969f8b"
             )

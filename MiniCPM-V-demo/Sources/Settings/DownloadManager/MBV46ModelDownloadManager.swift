@@ -113,13 +113,17 @@ class MBV46ModelDownloadManager: NSObject {
             backupModelUrl: MiniCPMModelConst.mmprojv46_BackUpURLString
         )
         
-        mlmodelcv46_Manager = MBModelDownloadHelperV2(
-            wrapper: mtmdWrapperExample,
-            modelName: MiniCPMModelConst.mlmodelcv46_ZipFileName,
-            modelUrl: MiniCPMModelConst.mlmodelcv46_ZipFileURLString,
-            filename: MiniCPMModelConst.mlmodelcv46_ZipFileName,
-            backupModelUrl: nil
-        )
+        // 开源版不再内置 V4.6 ANE 资产（原托管在内部中转桶，且已转归档不可匿名下载）。
+        // URL 为空时整条下载链路跳过，`aneModelManager` 保持 nil，上层调用都是 nil-safe。
+        if !MiniCPMModelConst.mlmodelcv46_ZipFileURLString.isEmpty {
+            mlmodelcv46_Manager = MBModelDownloadHelperV2(
+                wrapper: mtmdWrapperExample,
+                modelName: MiniCPMModelConst.mlmodelcv46_ZipFileName,
+                modelUrl: MiniCPMModelConst.mlmodelcv46_ZipFileURLString,
+                filename: MiniCPMModelConst.mlmodelcv46_ZipFileName,
+                backupModelUrl: nil
+            )
+        }
 
         // master 适配前的老 mmproj（OBS demo-fork merger 版本）启动时直接清掉，
         // 避免 modelsExist() fast-path 拿残留文件喂给 native 加载导致闪退。

@@ -316,90 +316,36 @@ extension MBSettingsViewController: UITableViewDelegate {
                 let detailVC = MBVoxcpm2ModelDetailViewController(with: mtmdWrapperExample)
                 self.navigationController?.pushViewController(detailVC, animated: true)
             } else if title == MiniCPMV47Const.displayedName {
-                self.selectV47MoE()
+                // 4.7 MoE：进下载/详情页（模型槽位等专家设置移到「功能设置」，且仅在用 MoE 时显示）
+                let vc = MBV47ModelDetailViewController(moeWith: mtmdWrapperExample)
+                self.navigationController?.pushViewController(vc, animated: true)
             } else if title == MiniCPMV47_1BConst.displayedName {
-                self.selectV47_1B()
+                let vc = MBV47ModelDetailViewController(oneBWith: mtmdWrapperExample)
+                self.navigationController?.pushViewController(vc, animated: true)
             }
         }
     }
 
-    /// MiniCPM-V 4.7 1B：权重由本地脚本推送，App 不做下载。
-    /// 本地文件在就直接选中（下次加载走 `.V47_1B` 分支）；不在就提示怎么放。
-    private func selectV47_1B() {
-        guard MiniCPMV47_1BConst.filesExist else {
-            let alert = UIAlertController(
-                title: MiniCPMV47_1BConst.displayedName,
-                message: "本地还没有 1B 权重。请把 \(MiniCPMV47_1BConst.modelFileName) 与 "
-                    + "\(MiniCPMV47_1BConst.mmprojFileName) 放进 "
-                    + "Documents/\(MiniCPMV47_1BConst.documentsDirName)/（用 pymobiledevice3 apps push 推送）。",
-                preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default))
-            present(alert, animated: true)
-            return
-        }
-        UserDefaults.standard.setValue(MiniCPMV47_1BConst.userDefaultsKey, forKey: "current_selected_model")
-        mtmdWrapperExample?.currentUsingModelType = .V47_1B
-        NotificationCenter.default.post(name: .mbModelSelectionChanged, object: nil)
-        loadTableViewData()
-    }
-
-    private func selectV47MoE() {
-        // 先看本地：文件齐全就直接进选择流程。缺文件只提示，不在 App 内下载。
-        let artifacts = MiniCPMV47Const.resolveArtifacts()
-        if let artifacts {
-            let problems = MiniCPMV47Const.expertsProblems(at: artifacts.expertsURL)
-            if problems.isEmpty {
-                presentV47SlotBankPicker(
-                    title: MiniCPMV47Const.displayedName,
-                    message: "模型已在本地。拖动滑条选择 slot bank。"
-                )
-                return
-            }
-            print("MiniCPMV47Const: experts 校验失败 \(problems.count) 个文件：\n"
-                  + problems.map { "  - " + $0.text }.joined(separator: "\n"))
-            let alert = UIAlertController(
-                title: "experts 不完整",
-                message: problems.prefix(3).map { $0.text }.joined(separator: "\n")
-                    + (problems.count > 3 ? "\n…共 \(problems.count) 个文件" : "")
-                    + "\n\n请重新安装模型文件（experts 与主模型必须同批）。",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .cancel))
-            present(alert, animated: true)
-            return
-        }
-
-        // 本地没有模型：提示需要先安装（公网下载待接入）。
-        let alert = UIAlertController(
-            title: MiniCPMV47Const.displayedName,
-            message: "本地没有模型文件。请先把 gguf + mmproj + experts 放入 \(MiniCPMV47Const.documentsDirName)/。",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .cancel))
-        present(alert, animated: true)
-    }
-
-    private func presentV47SlotBankPicker(title: String, message: String) {
+    /// 4.7 的「专家槽位（slot bank）」设置行：点开弹滑条。
+    ///
+    /// 原先它挂在「点击 MoE 模型」的流程里，现在模型点击直接进下载/详情页，
+    /// 这个旋钮就挪到「功能设置」里，和预读 / 缓存 / 预热放一起，且**仅在用 MoE 时显示**。
+    private func presentV47SlotBankPicker() {
         let box = MBSlotBankSliderBox(frame: CGRect(x: 0, y: 0, width: 270, height: 72))
         let host = UIViewController()
         host.view = box
         host.preferredContentSize = CGSize(width: 270, height: 72)
 
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        let alert = UIAlertController(title: L.Settings.slotBankTitle.loc,
+                                      message: L.Settings.slotBankMessage.loc,
+                                      preferredStyle: .alert)
         alert.setValue(host, forKey: "contentViewController")
-        alert.addAction(UIAlertAction(title: "使用", style: .default) { [weak self] _ in
-            self?.activateV47(slotBank: box.bank)
+        alert.addAction(UIAlertAction(title: L.Common.ok.loc, style: .default) { [weak self] _ in
+            MiniCPMV47Const.setSlotBank(box.bank)
+            self?.loadTableViewData()
         })
         alert.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
         present(alert, animated: true)
-    }
-
-    private func activateV47(slotBank: Int) {
-        MiniCPMV47Const.setSlotBank(slotBank)
-        UserDefaults.standard.setValue(MiniCPMV47Const.userDefaultsKey, forKey: "current_selected_model")
-        mtmdWrapperExample?.currentUsingModelType = .V47MoE
-        NotificationCenter.default.post(name: .mbModelSelectionChanged, object: nil)
-        loadTableViewData()
     }
 
     private func handleFeatureSelection(model: MBSettingsModel, at indexPath: IndexPath) {
@@ -415,6 +361,8 @@ extension MBSettingsViewController: UITableViewDelegate {
             presentCacheWindowPicker()
         } else if title == L.Settings.rowPrewarm.loc {
             presentPrewarmPicker()
+        } else if title == L.Settings.rowSlotBank.loc {
+            presentV47SlotBankPicker()
         } else if title == L.Realtime.title.loc {
             showRealtimeUnderstandingPage()
         }
@@ -777,38 +725,51 @@ extension MBSettingsViewController {
         langModel.detailText = LocalizationManager.shared.currentLanguage.displayName
         section.append(langModel)
 
-        let lookaheadPrefetchModel = MBSettingsModel()
-        lookaheadPrefetchModel.title = L.Settings.rowLookaheadPrefetchDepth.loc
-        lookaheadPrefetchModel.icon = UIImage(systemName: "arrow.down.circle")
-        lookaheadPrefetchModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
-        lookaheadPrefetchModel.detailText = {
-            let n = MiniCPMV47Const.lookaheadPrefetchDepth()
-            return n == 0 ? L.Settings.lookaheadPrefetchDepthOff.loc : "\(n)"
-        }()
-        section.append(lookaheadPrefetchModel)
+        // 以下都是 MoE 专属旋钮，只在当前用 35B-A3B MoE 时显示 —— 用 1B 或别的模型
+        // 看到这些专家设置只会困惑。
+        if isMoEModelActive {
+            let lookaheadPrefetchModel = MBSettingsModel()
+            lookaheadPrefetchModel.title = L.Settings.rowLookaheadPrefetchDepth.loc
+            lookaheadPrefetchModel.icon = UIImage(systemName: "arrow.down.circle")
+            lookaheadPrefetchModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+            lookaheadPrefetchModel.detailText = {
+                let n = MiniCPMV47Const.lookaheadPrefetchDepth()
+                return n == 0 ? L.Settings.lookaheadPrefetchDepthOff.loc : "\(n)"
+            }()
+            section.append(lookaheadPrefetchModel)
 
-        // 每层缓存槽数 c，改完需重载模型。
-        let cacheWindowModel = MBSettingsModel()
-        cacheWindowModel.title = L.Settings.rowCacheWindow.loc
-        cacheWindowModel.icon = UIImage(systemName: "internaldrive")
-        cacheWindowModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
-        cacheWindowModel.detailText = {
-            let c = MiniCPMV47Const.cacheWindowC()
-            if c <= 0 { return "关" }
-            return "\(c)（\(Int(MiniCPMV47Const.cacheWindowCoverage(c) * 100))%）"
-        }()
-        section.append(cacheWindowModel)
+            // 每层缓存槽数 c，改完需重载模型。
+            let cacheWindowModel = MBSettingsModel()
+            cacheWindowModel.title = L.Settings.rowCacheWindow.loc
+            cacheWindowModel.icon = UIImage(systemName: "internaldrive")
+            cacheWindowModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+            cacheWindowModel.detailText = {
+                let c = MiniCPMV47Const.cacheWindowC()
+                if c <= 0 { return "关" }
+                return "\(c)（\(Int(MiniCPMV47Const.cacheWindowCoverage(c) * 100))%）"
+            }()
+            section.append(cacheWindowModel)
 
-        // 缓存预热档位（每层预读多少个开头常用专家）。改完需重载模型。
-        let prewarmModel = MBSettingsModel()
-        prewarmModel.title = L.Settings.rowPrewarm.loc
-        prewarmModel.icon = UIImage(systemName: "flame")
-        prewarmModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
-        prewarmModel.detailText = {
-            let n = MiniCPMV47Const.prewarmLevel()
-            return n <= 0 ? L.Settings.prewarmOff.loc : "\(n)"
-        }()
-        section.append(prewarmModel)
+            // 缓存预热档位（每层预读多少个开头常用专家）。改完需重载模型。
+            let prewarmModel = MBSettingsModel()
+            prewarmModel.title = L.Settings.rowPrewarm.loc
+            prewarmModel.icon = UIImage(systemName: "flame")
+            prewarmModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+            prewarmModel.detailText = {
+                let n = MiniCPMV47Const.prewarmLevel()
+                return n <= 0 ? L.Settings.prewarmOff.loc : "\(n)"
+            }()
+            section.append(prewarmModel)
+
+            // 专家槽位（slot bank）。原先挂在「点击 MoE 模型」的流程里，现在模型点击直接进
+            // 下载/详情页，所以挪到这里和其他专家旋钮放在一起。
+            let slotBankModel = MBSettingsModel()
+            slotBankModel.title = L.Settings.rowSlotBank.loc
+            slotBankModel.icon = UIImage(systemName: "square.grid.3x3")
+            slotBankModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+            slotBankModel.detailText = "\(MiniCPMV47Const.slotBank())"
+            section.append(slotBankModel)
+        }
 
         // 显示 P/D 速度：拨一下即时生效（只控制工具条上那行文字是否显示，不影响推理）。
         let showPerfSpeedModel = MBSettingsModel()
@@ -872,6 +833,14 @@ extension MBSettingsViewController {
         // section.append(dsparkModel)
 
         dataArray.append(section)
+    }
+
+    /// 当前选中的模型是不是 4.7 的 35B-A3B MoE。
+    ///
+    /// 直接读 UserDefaults 而不看 `mtmdWrapperExample.currentUsingModelType`：
+    /// 后者要等模型加载流程才会被赋值，设置页刚进来时可能还是 .Unknown。
+    private var isMoEModelActive: Bool {
+        UserDefaults.standard.string(forKey: "current_selected_model") == MiniCPMV47Const.userDefaultsKey
     }
     
     /// Section 3: 其他设置

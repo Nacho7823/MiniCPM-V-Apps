@@ -1021,7 +1021,7 @@ static void apply_moe_k(mb_mtmd_context * ctx, int32_t k) {
     fprintf(stderr, "[MBMtmd] moe_k %d -> %d\n", cur, llama_n_expert_used(ctx->lctx.get()));
 }
 
-// Adapter for the older mtmd shipped by llama.cpp-omni_private.
+// Adapter for the older mtmd shipped by this engine branch.
 //
 // The iOS wrapper is written against upstream's newer helper API, where
 // mtmd_helper_bitmap_init_from_file() takes (ctx, path, placeholder, opt) and returns a

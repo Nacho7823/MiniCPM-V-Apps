@@ -225,8 +225,12 @@ struct MiniCPMModelConst {
     /// V4.6 ANE zip 文件名（下载到 Documents 后解压得到 .mlmodelc 目录）
     static let mlmodelcv46_ZipFileName = "coreml_minicpmv46_vit_all_f32.mlmodelc.zip"
 
-    /// V4.6 ANE zip 下载地址
-    static let mlmodelcv46_ZipFileURLString = "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/minicpmv46-instruct/coreml_minicpmv46_vit_all_f32.mlmodelc.zip"
+    /// V4.6 ANE zip 下载地址。
+    ///
+    /// **当前为空**：原先托管在华为云 OBS 中转桶，该桶为内部中转用途，不适合对外发布
+    /// （且对象已转 DEEP_ARCHIVE，匿名下载会返回 InvalidObjectState）。开源版不再内置该
+    /// 资产 —— 需要 V4.6 ANE 的用户请自备 zip 放进 Documents，或改由公开托管提供后再填这里。
+    static let mlmodelcv46_ZipFileURLString = ""
 
     /// V4.6 ANE zip md5（demo 分支重转：基于 ckpt/MiniCPM-V-4_6 封板权重 + HF 命名映射）
     static let mlmodelcv46_ZipFileMD5 = "4ea0fbdb9b975e411b0faf478beb1d84"
@@ -246,8 +250,6 @@ struct MiniCPMModelConst {
     /// VoxCPM2 BaseLM 备用下载地址（ModelScope，国内直连）
     static let voxcpm2_BaseLMMSURLString = "https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf/resolve/master/VoxCPM2-BaseLM-Q4_K_M.gguf"
     
-    /// VoxCPM2 BaseLM 备用下载地址（华为云 OBS）
-    static let voxcpm2_BaseLMBackupURLString = "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-BaseLM-Q4_K_M.gguf"
 
     /// VoxCPM2 BaseLM Q4_K_M gguf 文件 md5 值
     static let voxcpm2_BaseLMMD5 = "d8cd571526464d225187d326caa289be"
@@ -263,9 +265,6 @@ struct MiniCPMModelConst {
 
     /// VoxCPM2 Acoustic 备用下载地址（ModelScope，国内直连）
     static let voxcpm2_AcousticMSURLString = "https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf/resolve/master/VoxCPM2-Acoustic-F16.gguf"
-    
-    /// VoxCPM2 Acoustic 备用下载地址（华为云 OBS）
-    static let voxcpm2_AcousticBackupURLString = "https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-Acoustic-F16.gguf"
 
     /// VoxCPM2 Acoustic F16 gguf 文件 md5 值
     static let voxcpm2_AcousticMD5 = "0f16229cfffe935102d21433f6969f8b"
@@ -273,6 +272,14 @@ struct MiniCPMModelConst {
     /// VoxCPM2 整体显示名
     static let voxcpm2_DisplayedName = "VoxCPM2 (TTS)"
 
+}
+
+/// 一个可下载文件：仓库内路径 + 落盘到 `Documents/<documentsDirName>/` 下的相对名 +
+/// 期望字节数（用于进度条总长与下载后校验）。
+struct ModelDownloadFile {
+    let remotePath: String
+    let localName: String
+    let bytes: Int64
 }
 
 /// MiniCPM-V 4.7 (35a3_hf_v47) MoE SSD — 文本塔 qwen35moe + 视觉塔 minicpmv4_6。
@@ -292,6 +299,25 @@ struct MiniCPMV47_1BConst {
     /// 16x 下单图最多 640 token（`1+9` 贴图），4096 留足文本与输出余量。
     /// 若换 4x 塔（每贴图 256 token、单图上限 2560），这里必须一起抬。
     static let defaultNCtx = 4096
+
+    /// 公网托管（下载源，两个源竞速；任一可用即可）。
+    ///
+    /// 托管在作者的个人 HF/MS 仓库下，按模型分子目录。换仓库或换量化时
+    /// `downloadFiles` 里的路径要一起改。
+    static let hfBase = "https://huggingface.co/tc-mb/MiniCPM-V-Apps-gguf/resolve/main"
+    static let msBase = "https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf/resolve/master"
+
+    /// 需要下载的文件（1B 只需主模型 + mmproj）。
+    static var downloadFiles: [ModelDownloadFile] {
+        [
+            ModelDownloadFile(remotePath: "MiniCPM-V-4.7-1B/\(modelFileName)",
+                              localName: modelFileName,
+                              bytes: 672_003_584),
+            ModelDownloadFile(remotePath: "MiniCPM-V-4.7-1B/\(mmprojFileName)",
+                              localName: mmprojFileName,
+                              bytes: 1_108_746_816),
+        ]
+    }
 
     struct Artifacts {
         let modelURL: URL
@@ -325,6 +351,40 @@ struct MiniCPMV47Const {
     static let modelFileName = "MiniCPM-V-4_7-35B-A3B-mix_q3gud_im-les.gguf"
     static let mmprojFileName = "mmproj-model-f16.gguf"
     static let expertsDirName = "experts"
+
+    /// 公网托管（下载源，两个源竞速）。
+    static let hfBase = "https://huggingface.co/tc-mb/MiniCPM-V-Apps-gguf/resolve/main"
+    static let msBase = "https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf/resolve/master"
+
+    /// experts 目录里 layer 分片的个数与单片字节数。
+    ///
+    /// 分片名固定为 `layer_%03d.bin`，每片等大（一个 layer 的全部路由专家）。
+    /// 换量化要一起改这两项；下载完由 `expertsProblems()` 用 manifest 再验一遍。
+    static let expertLayerCount = 40
+    static let expertLayerBytes: Int64 = 346_030_080
+
+    /// 需要下载的文件：主模型 + mmproj + experts 的 manifest 与全部分片。
+    ///
+    /// 顺序有意为之：manifest 最先（小、能最快确认布局），接着主模型与 mmproj，
+    /// 最后 40 个分片（最占时间）。
+    static var downloadFiles: [ModelDownloadFile] {
+        let dir = "MiniCPM-V-4.7-35B-A3B"
+        var files: [ModelDownloadFile] = [
+            ModelDownloadFile(remotePath: "\(dir)/\(expertsDirName)/manifest.json",
+                              localName: "\(expertsDirName)/manifest.json", bytes: 73_668),
+            ModelDownloadFile(remotePath: "\(dir)/\(modelFileName)",
+                              localName: modelFileName, bytes: 1_662_732_800),
+            ModelDownloadFile(remotePath: "\(dir)/\(mmprojFileName)",
+                              localName: mmprojFileName, bytes: 1_119_575_840),
+        ]
+        for i in 0..<expertLayerCount {
+            let name = String(format: "layer_%03d.bin", i)
+            files.append(ModelDownloadFile(remotePath: "\(dir)/\(expertsDirName)/\(name)",
+                                           localName: "\(expertsDirName)/\(name)",
+                                           bytes: expertLayerBytes))
+        }
+        return files
+    }
     /// 手机上落盘目录。必须放子目录：mmproj 文件名与 V2.6 的
     /// `mmproj-model-f16.gguf` 同名，平铺在 Documents 根会互相覆盖。
     static let documentsDirName = "MiniCPMV47"
@@ -334,7 +394,13 @@ struct MiniCPMV47Const {
     static let slotBankStep = 8
     /// 35a3_hf_v47 routed expert_count
     static let maxSlotBank = 256
-    static let defaultNCtx = 2048
+    /// 上下文长度。2048 会被「带图 + 多轮」顶穿：一张 9 切片图约 447 token，
+    /// 视频帧每帧 80+，累积几轮就没地方给输出了（表现为输出被截断）。
+    ///
+    /// 提到 4096 的代价很小：V47 只有 10 层带 KV，实测 20 KiB/token，
+    /// 2048 → 4096 只多 40 MiB；`decodeWindowKv32kExtraMiB()` 会自动把这笔
+    /// 算进内存预留（2400 → 2440 MiB），不用手工改预算。
+    static let defaultNCtx = 4096
     /// 对 minicpmv4_6 视觉塔**无效**：`clip.cpp` 的 MINICPMV4_6 分支不调
     /// `set_limit_image_tokens`，mmproj dump 出来 `image_max_pixels = -1`（已实测）。
     /// 留着只作兜底：万一又换成 Qwen-VL 那种 dyn_size 塔，这根旋钮能防像素预算失控。
@@ -932,6 +998,8 @@ struct MiniCPMV47Const {
            let v = Int(ProcessInfo.processInfo.arguments[i + 1]), v > 0 {
             return v
         }
+    // 2400 是基线预留，另加按实际 n_ctx 算出的 KV 增量（不再为没配置的上下文白扣）。
+    // 默认 n_ctx=4096 时增量为 40（4k 的 80 MiB 减掉基线已含的 2k 部分 40 MiB）。
         return 2400 + decodeWindowKv32kExtraMiB()
     }
 

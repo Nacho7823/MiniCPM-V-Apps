@@ -196,9 +196,9 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
     null,                                                        // ggufRemoteName
     null,                                                        // mmprojRemoteName
     null,                                                        // acousticRemoteName
-    'https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-BaseLM-Q4_K_M.gguf',
+    null,                                                        // directGgufUrl
     null,                                                        // directMmprojUrl
-    'https://data-transfer-huawei.obs.cn-north-4.myhuaweicloud.com/VoxCPM2-Acoustic-F16.gguf',
+    null,                                                        // directAcousticUrl
     'd8cd571526464d225187d326caa289be',
     null,                                                        // mmprojMd5
     '0f16229cfffe935102d21433f6969f8b'

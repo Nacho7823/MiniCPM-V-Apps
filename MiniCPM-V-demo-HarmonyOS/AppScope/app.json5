@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.openbmb.minicpmv",
+    "bundleName": "com.tianchi.minicpmv",
     "vendor": "openbmb",
     "versionCode": 10,
     "versionName": "2.5",

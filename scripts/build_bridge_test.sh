@@ -63,8 +63,12 @@ clang++ \
 
 # Defaults — tweak via positional args if you want to point at a different
 # model, mmproj or test image.
-DEFAULT_MODEL="/Users/tianchi/model/Release/MiniCPM-V-4.6/hf/MiniCPM-V-4.6-gguf/MiniCPM-V-4_6-Q4_K_M.gguf"
-DEFAULT_MMPROJ="/Users/tianchi/model/Release/MiniCPM-V-4.6/hf/MiniCPM-V-4.6-gguf/mmproj-model-f16.gguf"
+#
+# Put the files under `models/` (repo root) to use the defaults, or override
+# with the MB_BRIDGE_MODEL / MB_BRIDGE_MMPROJ environment variables, or pass
+# them as positional args.
+DEFAULT_MODEL="${MB_BRIDGE_MODEL:-${REPO_ROOT}/models/MiniCPM-V-4_6-Q4_K_M.gguf}"
+DEFAULT_MMPROJ="${MB_BRIDGE_MMPROJ:-${REPO_ROOT}/models/mmproj-model-f16.gguf}"
 DEFAULT_IMAGE="${LLAMA_DIR}/tools/mtmd/test-1.jpeg"
 DEFAULT_PROMPT="Please describe this image in one sentence."
 
