@@ -122,9 +122,14 @@ final class MBV47ModelDownloadManager: NSObject {
         for f in variant.files {
             _ = helper(for: f)
         }
-        purgeStaleCacheEntries()
         reconcileStatusFromDisk()
+        // 先恢复续传（它可能真的把下载跑起来），再清理残片。
         restoreDownloadProgress()
+        // 只在**没有下载在跑**时才清理：`purgeStaleCacheEntries` 按「尺寸 != 期望」判定，
+        // 而下到一半的临时文件尺寸必然不符 —— 若此时清理，会把正在续传的进度删掉。
+        if !hasAnyDownloadActive() {
+            purgeStaleCacheEntries()
+        }
     }
 
     // MARK: - 残留缓存清理
@@ -278,6 +283,23 @@ final class MBV47ModelDownloadManager: NSObject {
 
     func downloadAll() {
         reconcileStatusFromDisk()
+
+        // 每次**用户主动点下载**都重新给满重试额度、并复位 helper 的粘性 status。
+        //
+        // 两个跨页面存活的状态会把重试卡死（退出详情页也没用，只有重启 App 能恢复）：
+        //
+        //   1. `MBModelDownloadHelperV2.status` 失败后被置成 "failed"，而进度回调会把它
+        //      原样回传；helper 在本 manager 里是**缓存复用**的（比页面活得久），
+        //      于是重试的第一个回调就带着陈旧的 "failed" 回来，当场又判失败。
+        //   2. `attempts` 到达上限后 `pump()` 一个请求都不发（本意是防内部自旋）。
+        //
+        // 清在这里（用户主动入口）是安全的：`maxAttemptsPerFile` 要拦的是 pump() 的
+        // 自动重试，不该拦用户手动重试。别把这个清理挪进 pump()。
+        queue.sync { attempts.removeAll() }
+        for (_, h) in queue.sync(execute: { helpers }) {
+            h.status = "download"
+        }
+
         let pending = variant.files.filter { !isFileDownloaded($0) }
         debugLog("-->> V47(\(variant.documentsDirName)) 待下载 \(pending.count) 个文件，"
                  + "窗口 \(maxConcurrent)")
@@ -323,7 +345,18 @@ final class MBV47ModelDownloadManager: NSObject {
         h.downloadV2(completionBlock: { [weak self] status, progress in
             guard let self = self else { return }
             DispatchQueue.main.async {
-                if progress >= 1 {
+                // 用 `status == "downloaded"` 判完成，**不能**用 `progress >= 1`。
+                //
+                // FDownLoader 在「最后一块数据到达」时就把 progress 打到 1.0，而
+                // 真正的落盘（Caches → Documents）发生在**之后**的
+                // handleDownloadSuccess 里。用 progress 判会在文件还没搬过去时就摘掉
+                // inFlight、pump() 收工、finishIfComplete() 发现文件不在 → 弹「下载失败」，
+                // 而几毫秒后文件其实落好了（表现为"报失败但模型能用"）。
+                //
+                // status 只在 moveItem / copyItem 成功之后才置为 "downloaded"，
+                // 所以它才是"文件确实在位"的信号。
+                let isDone = (status == "downloaded")
+                if isDone {
                     self.queue.sync {
                         self.fileProgress[file.localName] = 1.0
                         self.fileState[file.localName] = .completed

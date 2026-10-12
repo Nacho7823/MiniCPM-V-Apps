@@ -25,6 +25,13 @@ class MBSettingsTableViewCell: UITableViewCell {
     
     /// 模型状态 label
     private let statusLabel = UILabel()
+
+    /// 下载状态 label（显示在 detailText 右侧）。
+    ///
+    /// 独立于 `statusLabel`：`statusLabel` 被 `detailText`（文件大小）占用，而下载页需要
+    /// 两者并排。复用同一个 label 会导致状态被文件大小覆盖（configure() 的 detailText
+    /// 分支提前 return，状态分支根本走不到）。
+    private let downloadStatusLabel = UILabel()
     
     /// 开关控件（用于实时理解设置）
     private let switchControl = UISwitch()
@@ -83,6 +90,22 @@ class MBSettingsTableViewCell: UITableViewCell {
             make.right.equalTo(-44 - gap) // 为accessoryImageView留出空间
             make.height.equalTo(16)
         }
+
+        // 配置 downloadStatusLabel（下载状态，显示在 detailText 右侧）
+        // 宽度不写死、只给上限，配合高抗压缩优先级，让它按内容自适应；
+        // 右侧固定 16pt，左边缘由 statusLabel 反向锚定（见 configure）。
+        downloadStatusLabel.textColor = UIColor.mb_color(with: "#007AFF")
+        downloadStatusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        downloadStatusLabel.textAlignment = .right
+        downloadStatusLabel.setContentHuggingPriority(.required, for: .horizontal)
+        downloadStatusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        contentView.addSubview(downloadStatusLabel)
+        downloadStatusLabel.snp.makeConstraints { make in
+            make.centerY.equalTo(contentView)
+            make.width.lessThanOrEqualTo(96)
+            make.right.equalTo(-16)
+            make.height.equalTo(16)
+        }
         
         // 配置 switchControl
         switchControl.onTintColor = UIColor.mb_color(with: "#007AFF")
@@ -109,6 +132,9 @@ class MBSettingsTableViewCell: UITableViewCell {
         // 重置所有状态
         statusLabel.text = ""
         statusLabel.isHidden = true
+        // cell 是复用的，不清会把上一行的下载状态带过来
+        downloadStatusLabel.text = ""
+        downloadStatusLabel.isHidden = true
         accessoryImageView.image = nil
         accessoryImageView.isHidden = true
         switchControl.isHidden = true
@@ -160,12 +186,27 @@ class MBSettingsTableViewCell: UITableViewCell {
                 accessoryImageView.tintColor = .black
                 accessoryImageView.isHidden = (model.accessoryIcon == nil)
 
-                // 与 selected 分支同款约束：给 accessoryImageView 留位
-                statusLabel.snp.remakeConstraints { make in
-                    make.centerY.equalTo(contentView)
-                    make.width.equalTo(140)
-                    make.right.equalTo(-44 - gap)
-                    make.height.equalTo(16)
+                // 若同时要显示下载状态，则两者并排：文件大小在左、状态在右。
+                // statusLabel 的右边缘**锚定到 downloadStatusLabel 的实际左边缘**，
+                // 而不是写固定偏移 —— 状态文字右对齐且长度差很多（「已下载」36pt vs
+                // 「下载中… 12/40」66pt），固定偏移会让短状态显得离得很远。
+                if model.shouldShowStatusText, let statusStr = model.statusString, !statusStr.isEmpty {
+                    downloadStatusLabel.text = statusStr
+                    downloadStatusLabel.isHidden = false
+                    statusLabel.snp.remakeConstraints { make in
+                        make.centerY.equalTo(contentView)
+                        make.width.equalTo(96)
+                        make.right.equalTo(downloadStatusLabel.snp.left).offset(-10)
+                        make.height.equalTo(16)
+                    }
+                } else {
+                    // 与 selected 分支同款约束：给 accessoryImageView 留位
+                    statusLabel.snp.remakeConstraints { make in
+                        make.centerY.equalTo(contentView)
+                        make.width.equalTo(140)
+                        make.right.equalTo(-44 - gap)
+                        make.height.equalTo(16)
+                    }
                 }
                 return
             }

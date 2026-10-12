@@ -237,6 +237,11 @@ When rotating a model or re-converting the mmproj, **edit both sides in the same
   `gradle.properties` with `signing.*`, keystore files, `*.p12`, `*.mobileprovision`.
 - ❌ Commit message with AI / tool attribution trailers.
 - ❌ Switch the `llama.cpp-omni` submodule branch.
+- ❌ Remove `DEVELOPMENT_TEAM = VGXUYC2C5K` from the app target's build settings
+  while "cleaning up for open source". Without it, `⌘R` in Xcode fails to sign and
+  every contributor has to inject a team on the command line. Keeping the author's
+  team is intentional: Xcode prompts each new user to pick their own account, so the
+  committed value is a convenience for the author, not a constraint on anyone else.
 - ❌ Decorate release artefact filenames with three-segment versions, commit hashes,
   `-release`, `-signed`, dates, etc.
 
