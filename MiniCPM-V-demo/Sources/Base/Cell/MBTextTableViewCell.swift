@@ -354,6 +354,41 @@ class MBTextTableViewCell: UITableViewCell {
         customTextView.attributedText = nil
     }
     
+    /// 气泡内文字视图的**实际**宽度（左右各 15pt 内边距已扣除）。
+    ///
+    /// **为什么必须三处共用**：`bindTextWith` 用它定气泡宽，而气泡宽直接决定文字
+    /// 在哪里换行；两处高度测量（`heightFromRenderedContent` / `calcCellHeight`）
+    /// 也必须在**同一个宽度**上量。
+    ///
+    /// 此前高度侧是按 `frameWidth`（由 cell 宽度估算出的「可用宽」）量的，但文字较短时
+    /// `sizeThatFits` 返回的是文字的**自然宽度**，气泡会收窄到刚好包住文字 —— 收窄后
+    /// 文字多换了一行，而高度没算进去，于是浅蓝底偶尔装不下文字（表现为「底框跟不上
+    /// 文字」）。llm 侧还有两条**加宽**规则（最小 280、显示 P/D 速度时至少 420），
+    /// 加宽后实际宽度反而大于 `frameWidth`，同样要共用。
+    static func bubbleTextWidth(viewWidth: CGFloat,
+                                cellMargin: CGFloat,
+                                isLLM: Bool,
+                                hasSpeed: Bool,
+                                measure: (CGFloat) -> CGSize) -> CGFloat {
+        // 1) 先在「可用宽」下量一次，拿到文字的**自然宽度**（短文本会小于可用宽）
+        let availWidth = viewWidth - CGFloat(cellMargin * 2 + 48) - 30 + kBubbleRightExtra
+        var containerBGWidth = 15 + ceil(measure(availWidth).width) + 15
+
+        // 2) 套用与 bindTextWith 相同的夹紧规则，得到气泡的最终宽度
+        if isLLM {
+            if containerBGWidth < 280 {
+                containerBGWidth = 280      // 保证放得下底部 toolbar
+            }
+            if hasSpeed {
+                let maxWidth = viewWidth - CGFloat(cellMargin * 2)
+                containerBGWidth = max(containerBGWidth, min(420, maxWidth))
+            }
+        }
+
+        // 3) 文字视图实际占的宽度 = 气泡宽 - 左右各 15
+        return max(0, containerBGWidth - 30)
+    }
+
     public func bindTextWith(data: MBChatModel?, streaming: Bool = false) {
         model = data
         
@@ -401,15 +436,19 @@ class MBTextTableViewCell: UITableViewCell {
                 }
             }
             
-            // cellMargin means cell left, right margin, 15 inner text margin
-            let frameWidth: CGFloat = self.contentView.frame.size.width - CGFloat((cellMargin*2 + 48/*错落有致*/)) - 30 + Self.kBubbleRightExtra
-            // 用 sizeThatFits（而不是 attributedText.boundingRect）：表格是段落级
-            // textBlocks，只有文本视图的布局才能正确算出它的高度。
-            let size = customTextView.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
+            // 气泡宽度 = 文字宽度 + 左右各 15pt 内边距。宽度算法必须与两处高度测量
+            // 共用（见 bubbleTextWidth 的说明），否则渲染宽度与测量宽度会不一致。
+            let textWidth = Self.bubbleTextWidth(
+                viewWidth: contentView.frame.size.width,
+                cellMargin: CGFloat(cellMargin),
+                isLLM: model?.role == "llm",
+                hasSpeed: visibleSpeedLog != nil,
+                measure: { customTextView.sizeThatFits(CGSize(width: $0, height: .greatestFiniteMagnitude)) })
 
-            let textWidth = ceil(size.width)
+            var containerBGWidth = textWidth + 30
 
-            var containerBGWidth = 15 + textWidth + 15
+            // 文本视图高度按**实际渲染宽度**量，与气泡宽度保持一致
+            let size = customTextView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
 
             if model?.role == "user" {
 
@@ -428,15 +467,7 @@ class MBTextTableViewCell: UITableViewCell {
             } else if model?.role == "llm" {
                 
                 self.containerBGView.backgroundColor = UIColor.mb_color(with: "#EFF4FF")
-                if containerBGWidth < 280 {
-                    // 保证可以放得下 toolbar
-                    containerBGWidth = 280
-                }
-                if let speed = visibleSpeedLog {
-                    // 速度文案较长：撑宽 toolbar，但不超出可用的 cell 宽度（iPhone 上 420 会溢一点）
-                    let maxWidth = self.contentView.frame.size.width - CGFloat(cellMargin * 2)
-                    containerBGWidth = max(containerBGWidth, min(420, maxWidth))
-                }
+                // 宽度夹紧（最小 280 / 显示速度时至少 420）已在 bubbleTextWidth 里统一处理。
 
                 containerBGView.snp.remakeConstraints { make in
                     make.left.equalTo(cellMargin)
@@ -562,18 +593,22 @@ class MBTextTableViewCell: UITableViewCell {
     public func heightFromRenderedContent(viewWidth: CGFloat) -> CGFloat {
         guard let attrText = customTextView.attributedText else { return 0 }
 
-        var margin: CGFloat = 32
-        if MBUtils.isDeviceIPad() {
-            margin = 64 * 2
-        }
+        // 必须在**实际渲染宽度**上量高度：气泡会按文字自然宽度收窄（或按 llm 的规则
+        // 加宽），换行数随之改变。按 cell 可用宽（frameWidth）量会算错行数 ——
+        // 这就是「浅蓝底跟不上文字」的成因。见 bubbleTextWidth。
+        let textWidth = Self.bubbleTextWidth(
+            viewWidth: viewWidth,
+            cellMargin: CGFloat(cellMargin),
+            isLLM: model?.role == "llm",
+            hasSpeed: visibleSpeedLog != nil,
+            measure: { customTextView.sizeThatFits(CGSize(width: $0, height: .greatestFiniteMagnitude)) })
 
-        let frameWidth = viewWidth - CGFloat(margin * 2 + 48) - 15 + Self.kBubbleRightExtra
         // 用 sizeThatFits（表格是段落级 textBlocks，boundingRect 量不准）；
         // UITextView 非线程安全，必须在主线程调用。
+        let measureSize = CGSize(width: textWidth, height: .greatestFiniteMagnitude)
         let textSize = Thread.isMainThread
-            ? customTextView.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
-            : attrText.boundingRect(with: CGSize(width: frameWidth, height: .greatestFiniteMagnitude),
-                                    options: .usesLineFragmentOrigin, context: nil).size
+            ? customTextView.sizeThatFits(measureSize)
+            : attrText.boundingRect(with: measureSize, options: .usesLineFragmentOrigin, context: nil).size
 
         var toolbarAreaHeight: CGFloat = 0
         if model?.hasBottomToolbar == true {
@@ -629,16 +664,18 @@ class MBTextTableViewCell: UITableViewCell {
                 collapsed: isCollapsed, renderMarkdown: isLLM)
             
             // 适配 iPhone + iPad
-            var cellMargin: CGFloat = 32
-            
-            if MBUtils.isDeviceIPad() {
-                cellMargin = 64 * 2
-            }
-            
-            // cellMargin means cell left, right margin, 15 inner text margin
-            let frameWidth: CGFloat = viewWidth - CGFloat((cellMargin*2 + 48/* 为了错落有致 */)) - 15/* 15 * 2 UILabel 内边距 */ + Self.kBubbleRightExtra
+            let cellMargin: CGFloat = MBUtils.isDeviceIPad() ? 120 : 24
 
-            let pureContentTextframe = probe.sizeThatFits(CGSize(width: frameWidth, height: .greatestFiniteMagnitude))
+            // 与 bindTextWith / heightFromRenderedContent 共用同一个宽度算法：
+            // 渲染宽度 ≠ 测量宽度时换行数会不一致（浅蓝底装不下文字）。
+            let textWidth = bubbleTextWidth(
+                viewWidth: viewWidth,
+                cellMargin: cellMargin,
+                isLLM: isLLM,
+                hasSpeed: !(data?.speedLog ?? "").isEmpty && MiniCPMV47Const.showPerfSpeedEnabled(),
+                measure: { probe.sizeThatFits(CGSize(width: $0, height: .greatestFiniteMagnitude)) })
+
+            let pureContentTextframe = probe.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
             
             /*
              
