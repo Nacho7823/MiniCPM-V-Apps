@@ -7,6 +7,8 @@ This demo runs the MiniCPM-V family of multimodal models fully on-device on iOS,
 * **MiniCPM-V 2.6**
 * **MiniCPM-V 4.0**
 * **MiniCPM-V 4.6**
+* **MiniCPM-V 4.7 35B-A3B** (MoE, streams experts from SSD)
+* **MiniCPM-V 4.7 1B** (dense)
 * **MiniCPM5-1B** (text-only)
 * **MiniCPM5-2B** (text-only)
 * **VoxCPM2** (text-to-speech, TTS)
@@ -158,11 +160,13 @@ After the first launch, open the in-app **Model Manager** and tap **Download**. 
 
 The on-device memory needed to run a model is roughly *(model file size) + KV cache + a few hundred MB of working memory for the vision encoder and llama.cpp internals*. The recommended values below leave enough headroom for the OS and the demo app itself.
 
-| Model | LLM params | Recommended quant | LLM file (Q4) | mmproj (f16) | Total download | Recommended device RAM |
+| Model | LLM params | Recommended quant | LLM file | mmproj (f16) | Total download | Recommended device RAM |
 | --- | --- | --- | --- | --- | --- | --- |
 | MiniCPM-V 2.6 | 8B | Q4_K_M | ~4.4 GB | ~1.0 GB | ~5.4 GB | **≥ 8 GB** |
 | MiniCPM-V 4.0 | 4.1B | Q4_K_M | ~2.0 GB | ~0.9 GB | ~2.9 GB | **≥ 6 GB** |
 | MiniCPM-V 4.6 | 1.3B | Q4_K_M | ~0.5 GB | ~1.1 GB | ~1.6 GB | **≥ 6 GB** |
+| MiniCPM-V 4.7 35B-A3B | 35B (3B active) | q3gud-im (Q3_K experts) | ~1.7 GB | ~1.1 GB | **~16.6 GB** | **≥ 12 GB** |
+| MiniCPM-V 4.7 1B | 1B | Q4_K_M | ~0.7 GB | ~1.1 GB | ~1.8 GB | **≥ 4 GB** |
 | MiniCPM5-1B | 1B | Q4_K_M | ~0.5 GB | — | ~0.5 GB | **≥ 4 GB** |
 | MiniCPM5-2B | 2B | Q4_K_M | ~1.5 GB | — | ~1.5 GB | **≥ 6 GB** |
 | VoxCPM2 (TTS) | ~2B | Q4_K_M + F16 | ~1.0 GB | — | ~2.8 GB | **≥ 6 GB** |
@@ -172,8 +176,10 @@ Notes:
 * `mmproj` is the vision projector + ViT weights; it is shipped in **f16** because quantising the visual tower hurts perception quality noticeably more than quantising the LLM.
 * MiniCPM5-1B and MiniCPM5-2B are text-only models and do not need an `mmproj` file.
 * VoxCPM2 requires two GGUF files (BaseLM + Acoustic) and does not use an `mmproj` either — it is a pure TTS model.
+* MiniCPM-V 4.7 35B-A3B uses a **Q3_K** expert quant (`mix_q3gud_im`) rather than Q4, and its routed experts are split out of the main `.gguf` into a separate `experts/` directory. The **~16.6 GB** above is the main file + all 40 expert shards + `mmproj`; plan for ~17 GB of free storage. Because the experts are streamed from SSD on demand rather than held in RAM, this variant also needs **fast internal storage** — see §2.4.
 * All three demos default to a context window of 4K tokens. Larger contexts will increase the KV-cache footprint roughly linearly, so on a borderline device you may need to lower it.
 * On Android / HarmonyOS, devices with 8 GB+ RAM are strongly recommended for V 2.6. On iOS, V 2.6 has been validated on iPhone 15 Pro / 16 series and recent iPads with M-series chips; older 6 GB devices may swap heavily.
+* MiniCPM-V 4.7 35B-A3B has been validated on a 12 GB iPhone 17 Pro Max. On devices with less RAM the app automatically falls back to a **smaller expert cache**, which works but is considerably slower.
 
 ### 2.1 MiniCPM-V 2.6 GGUF Files
 
@@ -202,7 +208,53 @@ Download the language model file (e.g., `ggml-model-Q4_K_M.gguf`) and the vision
 
 Download the language model file (e.g., `MiniCPM-V-4_6-Q4_K_M.gguf`) and the vision model file (`mmproj-model-f16.gguf`) from the repository.
 
-### 2.4 MiniCPM5-1B GGUF Files (text-only)
+### 2.4 MiniCPM-V 4.7 GGUF Files
+
+MiniCPM-V 4.7 ships in two sizes:
+
+* **MiniCPM-V 4.7 35B-A3B** — MoE (35B total / 3B active). Uses **MoE-SSD**: the routed experts are
+  stripped out of the main `.gguf` into a separate `experts/` directory and streamed from SSD on
+  demand, which is what makes a 35B-class model runnable on a phone.
+* **MiniCPM-V 4.7 1B** — dense, small enough to keep everything resident.
+
+#### Where to get the GGUF files
+
+There are **two** sets, for two different purposes:
+
+* **Standard quants — desktop / server.** The official repos carry the usual whole-model quant range
+  (F16, Q4_K_M, Q5_K_M, Q6_K, Q8_0, …). Pick whichever fits your machine's memory.
+
+  * HuggingFace: [openbmb/MiniCPM-V-4.7-35B-A3B-gguf](https://huggingface.co/openbmb/MiniCPM-V-4.7-35B-A3B-gguf) · [openbmb/MiniCPM-V-4.7-1B-gguf](https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf)
+  * ModelScope: [openbmb/MiniCPM-V-4.7-35B-A3B-gguf](https://modelscope.cn/models/openbmb/MiniCPM-V-4.7-35B-A3B-gguf) · [openbmb/MiniCPM-V-4.7-1B-gguf](https://modelscope.cn/models/openbmb/MiniCPM-V-4.7-1B-gguf)
+
+* **On-device split — for this demo, on a phone.** The `-les` main file plus its `experts/` directory
+  (and the 1B revision this demo is actually built and tested against).
+
+  * HuggingFace: [tc-mb/MiniCPM-V-Apps-gguf](https://huggingface.co/tc-mb/MiniCPM-V-Apps-gguf)
+  * ModelScope: [zerg13/MiniCPM-V-Apps-gguf](https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf)
+
+> **Why a separate split exists.** The official repos do **not** carry a `-les` variant, and this demo
+> cannot load their 35B `mix_q3gud_im.gguf`: that file keeps the routed experts inline, so a phone would
+> need the whole ~15.5 GB as a single Metal buffer (mmap) or as resident memory (no-mmap) — either way
+> the OS kills it. Stripping the experts into `experts/` lets them be paged in from SSD on demand, which
+> is what makes 35B-class inference possible on a phone at all. The split is therefore an artifact made
+> *for* this demo, not a general-purpose release. 1B needs no split; it is hosted above only because
+> that is the revision this demo was validated against.
+
+Files are grouped into per-model sub-directories:
+
+| Variant | Files | On-device location |
+| --- | --- | --- |
+| **35B-A3B** | `MiniCPM-V-4.7-35B-A3B/MiniCPM-V-4_7-35B-A3B-mix_q3gud_im-les.gguf`<br>`MiniCPM-V-4.7-35B-A3B/mmproj-model-f16.gguf`<br>`MiniCPM-V-4.7-35B-A3B/experts/` (40 shards + `manifest.json`) | `Documents/MiniCPMV47/` |
+| **1B** | `MiniCPM-V-4.7-1B/MiniCPM-V-4_7-1B-Q4_K_M.gguf`<br>`MiniCPM-V-4.7-1B/mmproj-model-f16.gguf` | `Documents/MiniCPMV47_1B/` |
+
+> **The `experts/` directory must stay together with its main file.** The `-les` variant carries no
+> routed-expert weights of its own, so a mismatched pair fails the on-disk consistency check and the
+> model refuses to load. The reliable way to get this right is to download **inside the app**
+> (Settings → tap the model → **Download**), which fetches every file and verifies the shard sizes
+> for you.
+
+### 2.5 MiniCPM5-1B GGUF Files (text-only)
 
 #### Download Official GGUF Files
 
@@ -211,7 +263,7 @@ Download the language model file (e.g., `MiniCPM-V-4_6-Q4_K_M.gguf`) and the vis
 
 Download the language model file (e.g., `MiniCPM5-1B-Q4_K_M.gguf`) from the repository. MiniCPM5 is text-only, so no `mmproj` is required.
 
-### 2.5 MiniCPM5-2B GGUF Files (text-only)
+### 2.6 MiniCPM5-2B GGUF Files (text-only)
 
 #### Download Official GGUF Files
 
@@ -220,7 +272,7 @@ Download the language model file (e.g., `MiniCPM5-1B-Q4_K_M.gguf`) from the repo
 
 Download the language model file (e.g., `MiniCPM5-2B-Q4_K_M.gguf`) from the repository. MiniCPM5 is text-only, so no `mmproj` is required.
 
-### 2.6 VoxCPM2 GGUF Files (text-to-speech)
+### 2.7 VoxCPM2 GGUF Files (text-to-speech)
 
 VoxCPM2 is a ~2B-parameter text-to-speech model. It consists of two GGUF files:
 

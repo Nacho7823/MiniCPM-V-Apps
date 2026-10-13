@@ -7,6 +7,8 @@
 * **MiniCPM-V 2.6**
 * **MiniCPM-V 4.0**
 * **MiniCPM-V 4.6**
+* **MiniCPM-V 4.7 35B-A3B**（MoE，专家权重从 SSD 流式读取）
+* **MiniCPM-V 4.7 1B**（dense）
 * **MiniCPM5-1B**（纯文本）
 * **MiniCPM5-2B**（纯文本）
 * **VoxCPM2**（语音合成 TTS）
@@ -158,11 +160,13 @@ cd MiniCPM-V-demo-Android
 
 端侧推理所需的内存大约等于 *模型权重大小 + KV cache + 视觉编码器与 llama.cpp 的若干百兆运行时开销*。下表给出的"推荐设备内存"已经为操作系统和 demo 应用本身预留了余量。
 
-| 模型 | LLM 参数量 | 推荐量化 | LLM 文件（Q4） | mmproj（f16） | 总下载量 | 推荐设备内存 |
+| 模型 | LLM 参数量 | 推荐量化 | LLM 文件 | mmproj（f16） | 总下载量 | 推荐设备内存 |
 | --- | --- | --- | --- | --- | --- | --- |
 | MiniCPM-V 2.6 | 8B | Q4_K_M | ~4.4 GB | ~1.0 GB | ~5.4 GB | **≥ 8 GB** |
 | MiniCPM-V 4.0 | 4.1B | Q4_K_M | ~2.0 GB | ~0.9 GB | ~2.9 GB | **≥ 6 GB** |
 | MiniCPM-V 4.6 | 1.3B | Q4_K_M | ~0.5 GB | ~1.1 GB | ~1.6 GB | **≥ 6 GB** |
+| MiniCPM-V 4.7 35B-A3B | 35B（激活 3B） | q3gud-im（专家 Q3_K） | ~1.7 GB | ~1.1 GB | **~16.6 GB** | **≥ 12 GB** |
+| MiniCPM-V 4.7 1B | 1B | Q4_K_M | ~0.7 GB | ~1.1 GB | ~1.8 GB | **≥ 4 GB** |
 | MiniCPM5-1B | 1B | Q4_K_M | ~0.5 GB | — | ~0.5 GB | **≥ 4 GB** |
 | MiniCPM5-2B | 2B | Q4_K_M | ~1.5 GB | — | ~1.5 GB | **≥ 6 GB** |
 | VoxCPM2 (TTS) | ~2B | Q4_K_M + F16 | ~1.0 GB | — | ~2.8 GB | **≥ 6 GB** |
@@ -172,8 +176,10 @@ cd MiniCPM-V-demo-Android
 * `mmproj` 是视觉投影器 + ViT 权重，统一保留 **f16** 精度——视觉塔做低比特量化对感知质量的伤害比 LLM 更明显。
 * MiniCPM5-1B 与 MiniCPM5-2B 为纯文本模型，不需要 `mmproj` 文件。
 * VoxCPM2 需要两个 GGUF 文件（BaseLM + Acoustic），同样不需要 `mmproj`——它是一个纯语音合成模型。
+* MiniCPM-V 4.7 35B-A3B 的专家权重用的是 **Q3_K** 量化（`mix_q3gud_im`）而非 Q4，且路由专家已从主 `.gguf` 中剥离到独立的 `experts/` 目录。表中的 **~16.6 GB** = 主文件 + 40 个专家分片 + `mmproj`，请预留约 17 GB 空闲存储。由于专家是按需从 SSD 流式读取、并不常驻内存，这一档还要求**较快的机身存储**，详见 §2.4。
 * 三端 demo 默认上下文长度为 4K token。上下文越长，KV cache 占用近似线性增长，临界设备上可能需要相应调小。
 * Android / HarmonyOS 上跑 V 2.6 强烈建议 8 GB 及以上内存。iOS 上 V 2.6 已在 iPhone 15 Pro / 16 系列以及搭载 M 系列芯片的较新 iPad 上验证；早期 6 GB 内存设备容易出现频繁换页。
+* MiniCPM-V 4.7 35B-A3B 已在 12 GB 的 iPhone 17 Pro Max 上验证。内存更小的设备会自动退化为**更小的专家缓存**，仍可运行，但速度明显下降。
 
 ### 2.1 MiniCPM-V 2.6 GGUF 模型文件
 
@@ -202,7 +208,49 @@ cd MiniCPM-V-demo-Android
 
 请从仓库下载语言模型文件（例如 `MiniCPM-V-4_6-Q4_K_M.gguf`）以及视觉模型文件（`mmproj-model-f16.gguf`）。
 
-### 2.4 MiniCPM5-1B GGUF 模型文件（纯文本）
+### 2.4 MiniCPM-V 4.7 GGUF 模型文件
+
+MiniCPM-V 4.7 有两个规格：
+
+* **MiniCPM-V 4.7 35B-A3B** —— MoE（总参 35B / 激活 3B）。采用 **MoE-SSD**：路由专家权重已从主
+  `.gguf` 中剥离到独立的 `experts/` 目录，按需从 SSD 流式读取——这正是 35B 级模型能在手机上跑起来的原因。
+* **MiniCPM-V 4.7 1B** —— dense，体积小到可以全部常驻内存。
+
+#### 从哪里获取 GGUF 文件
+
+有**两套**文件，用途不同：
+
+* **标准量化 —— 桌面 / 服务端。** 官方仓库提供完整的常规划化档位（F16、Q4_K_M、Q5_K_M、Q6_K、
+  Q8_0 等），按自己机器的内存挑一档即可。
+
+  * HuggingFace: [openbmb/MiniCPM-V-4.7-35B-A3B-gguf](https://huggingface.co/openbmb/MiniCPM-V-4.7-35B-A3B-gguf) · [openbmb/MiniCPM-V-4.7-1B-gguf](https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf)
+  * ModelScope: [openbmb/MiniCPM-V-4.7-35B-A3B-gguf](https://modelscope.cn/models/openbmb/MiniCPM-V-4.7-35B-A3B-gguf) · [openbmb/MiniCPM-V-4.7-1B-gguf](https://modelscope.cn/models/openbmb/MiniCPM-V-4.7-1B-gguf)
+
+* **端上拆分版 —— 供本 demo 在手机上使用。** `-les` 主文件 + 配套的 `experts/` 目录（以及本
+  demo 实际构建与验证所用的那一版 1B）。
+
+  * HuggingFace: [tc-mb/MiniCPM-V-Apps-gguf](https://huggingface.co/tc-mb/MiniCPM-V-Apps-gguf)
+  * ModelScope: [zerg13/MiniCPM-V-Apps-gguf](https://www.modelscope.cn/models/zerg13/MiniCPM-V-Apps-gguf)
+
+> **为什么需要单独一份拆分版。** 官方仓库**没有** `-les` 变体，而本 demo **无法**加载它们的 35B
+> `mix_q3gud_im.gguf`：那个文件的专家权重是内联的，手机要么把整个 ~15.5 GB 当成一个 Metal buffer
+> （mmap），要么全部常驻内存（关 mmap）—— 两种都会被系统杀掉。把专家剥离到 `experts/` 之后，它们
+> 可以按需从 SSD 分页读入，这才是 35B 级模型能在手机上跑起来的前提。所以拆分版是**为本 demo 专门
+> 制作**的产物，不是通用发布格式。1B 不需要拆分；把它一并放在上面，只是因为本 demo 是针对那一版
+> 做的验证。
+
+文件按模型分子目录存放：
+
+| 规格 | 需要下载的文件 | 端上落盘位置 |
+| --- | --- | --- |
+| **35B-A3B** | `MiniCPM-V-4.7-35B-A3B/MiniCPM-V-4_7-35B-A3B-mix_q3gud_im-les.gguf`<br>`MiniCPM-V-4.7-35B-A3B/mmproj-model-f16.gguf`<br>`MiniCPM-V-4.7-35B-A3B/experts/`（40 个分片 + `manifest.json`） | `Documents/MiniCPMV47/` |
+| **1B** | `MiniCPM-V-4.7-1B/MiniCPM-V-4_7-1B-Q4_K_M.gguf`<br>`MiniCPM-V-4.7-1B/mmproj-model-f16.gguf` | `Documents/MiniCPMV47_1B/` |
+
+> **`experts/` 目录必须和它的主文件配套使用。** `-les` 变体自身不含路由专家权重，两者批次不一致会
+> 通不过端上的完整性校验，模型直接拒绝加载。最稳妥的做法是**直接用 App 内下载**（设置 → 点该模型
+> → **下载**），它会拉取全部文件并逐个校验分片大小。
+
+### 2.5 MiniCPM5-1B GGUF 模型文件（纯文本）
 
 #### 下载官方 GGUF 文件
 
@@ -211,7 +259,7 @@ cd MiniCPM-V-demo-Android
 
 请从仓库下载语言模型文件（例如 `MiniCPM5-1B-Q4_K_M.gguf`）。MiniCPM5 为纯文本模型，不需要 `mmproj`。
 
-### 2.5 MiniCPM5-2B GGUF 模型文件（纯文本）
+### 2.6 MiniCPM5-2B GGUF 模型文件（纯文本）
 
 #### 下载官方 GGUF 文件
 
@@ -220,7 +268,7 @@ cd MiniCPM-V-demo-Android
 
 请从仓库下载语言模型文件（例如 `MiniCPM5-2B-Q4_K_M.gguf`）。MiniCPM5 为纯文本模型，不需要 `mmproj`。
 
-### 2.6 VoxCPM2 GGUF 模型文件（语音合成）
+### 2.7 VoxCPM2 GGUF 模型文件（语音合成）
 
 VoxCPM2 是约 2B 参数的语音合成模型，由两个 GGUF 文件组成：
 
