@@ -114,7 +114,7 @@ import llama
         // 设置一个预估值
         tv.estimatedRowHeight = 34
 
-        tv.backgroundColor = .white
+        tv.backgroundColor = UIColor.mbCardBackground
         
         tv.separatorStyle = .none
 
@@ -147,7 +147,7 @@ import llama
     /// 输入框外边的那个蓝色的
     lazy var inputRoundCornerView: UIView = {
         let v = UIView()
-        v.backgroundColor = .white
+        v.backgroundColor = UIColor.mbCardBackground
         v.clipsToBounds = true
         v.layer.cornerRadius = 16
         return v
@@ -174,8 +174,8 @@ import llama
         let tv = UITextView()
         tv.font = UIFont.systemFont(ofSize: 16)
         tv.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
-        tv.textColor = .black
-        tv.backgroundColor = .white
+        tv.textColor = UIColor.mbPrimaryText
+        tv.backgroundColor = UIColor.mbCardBackground
         tv.returnKeyType = .send
         tv.delegate = self
         tv.autoresizingMask = .flexibleHeight
@@ -231,7 +231,7 @@ import llama
     lazy var outputLabel: UILabel = {
         let lb = UILabel()
         lb.font = UIFont.systemFont(ofSize: 16, weight: .regular)
-        lb.backgroundColor = .white
+        lb.backgroundColor = UIColor.mbCardBackground
         lb.textColor = .blue
         lb.textAlignment = .center
         lb.numberOfLines = 0
@@ -351,6 +351,18 @@ import llama
         // 不在这里调 checkMultiModelLoadStatusAndLoadIt —— 推迟到 viewDidAppear
         // 首次回调，让 vc 的 view 先 layout + 显示第一帧，再开始 mtmd init。
         // 见 didStartInitialModelLoad 的注释。
+    }
+
+    /// 外观（亮/暗）切换：`layer.borderColor` 存的是解析后的 CGColor，不会自动跟随
+    /// 动态色，必须在这里重设一次；其余颜色都是动态色，UIKit 会自行重解析。
+    override public func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard #available(iOS 13.0, *),
+              traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) else {
+            return
+        }
+        inputRoundCornerView.layer.borderColor = UIColor.mb_color(with: "#108DED")?
+            .resolvedColor(with: traitCollection).cgColor
     }
 
     /// `LocalizationManager.shared.setLanguage(_:)` 触发：刷新所有由本 VC 持有的
@@ -712,7 +724,7 @@ import llama
                     item.isHidden = isNonVisual
                     if #unavailable(iOS 16.0) {
                         item.isEnabled = !isNonVisual
-                        item.tintColor = isNonVisual ? .clear : .black
+                        item.tintColor = isNonVisual ? .clear : UIColor.mbIconTint
                     }
                 }
             }
@@ -726,13 +738,13 @@ import llama
     
     func setupNavBarViews() {
 
-        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.black]
+        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.label]
         self.navigationController?.navigationBar.titleTextAttributes = titleDict
 
         // 顶导左侧改为标题 label（去掉原来的 home_nav_icon）。
         // 之所以不用 navigationItem.title：右侧已有 3 个按钮，系统会把中间标题挤窄到几乎不可见。
         let titleLabel = UILabel()
-        titleLabel.textColor = .black
+        titleLabel.textColor = UIColor.mbPrimaryText
         titleLabel.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
         titleLabel.text = self.title
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -745,7 +757,7 @@ import llama
                                             style: .plain,
                                             target: self,
                                             action: #selector(settingButtonTapped))
-        settingButton.tintColor = .black
+        settingButton.tintColor = UIColor.mbIconTint
 
         // delete icon
         let deleteButton = UIBarButtonItem(image: UIImage(named: "delete_icon"),
@@ -767,8 +779,8 @@ import llama
                                                style: .plain,
                                                target: self,
                                                action: #selector(imageSliceButtonTapped))
-        imageSliceButton.tintColor = .black
-        tutorialButton.tintColor = .black
+        imageSliceButton.tintColor = UIColor.mbIconTint
+        tutorialButton.tintColor = UIColor.mbIconTint
 
         // rightBarButtonItems 从右到左排列：
         //   tutorial(最右) → setting(齿轮) → image-slice(滑条) → delete

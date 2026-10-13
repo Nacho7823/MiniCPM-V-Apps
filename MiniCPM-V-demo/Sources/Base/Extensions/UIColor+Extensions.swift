@@ -27,7 +27,23 @@ extension UIColor {
     /// 获取UIColor对象
     /// - Parameter hexString: 以#开头的字符串（不区分大小写），如：#AbFFff，若需要alpha，则传#abcdef255，不传默认为1
     /// - Returns: UIColor对象，如果字符串格式不正确则返回nil
+    ///
+    /// **夜间模式**：若该色值在 `MBTheme.darkMap` 里有暗色变体，返回的是**动态色** ——
+    /// 会随 `userInterfaceStyle` 自动切换。查不到映射时返回静态色，行为与加夜间模式前一致。
+    /// 全 App 都用这个函数取色，所以暗色只需要维护一份映射表。
     static func mb_color(with hexString: String) -> UIColor? {
+        guard let light = mb_parse(hexString: hexString) else { return nil }
+        guard let darkHex = MBTheme.darkVariant(for: hexString),
+              let dark = mb_parse(hexString: darkHex) else {
+            return light
+        }
+        return UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        }
+    }
+
+    /// 解析 `#RRGGBB` 或 `#RRGGBB<alpha>`（alpha 为十进制 0-255）。失败返回 nil。
+    private static func mb_parse(hexString: String) -> UIColor? {
         // 检查字符串格式 - 必须以#开头且长度至少为7（# + 6位RGB）
         guard hexString.hasPrefix("#") && hexString.count >= 7 else {
             return nil

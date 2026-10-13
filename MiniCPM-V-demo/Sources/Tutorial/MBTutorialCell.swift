@@ -15,7 +15,7 @@ class MBTutorialCell: UITableViewCell {
 
     private let card: UIView = {
         let v = UIView()
-        v.backgroundColor = .white
+        v.backgroundColor = UIColor.mbCardBackground
         v.layer.cornerRadius = 16
         v.layer.shadowColor = UIColor.black.cgColor
         v.layer.shadowOpacity = 0.06
@@ -48,7 +48,7 @@ class MBTutorialCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let l = UILabel()
         l.font = .systemFont(ofSize: 18, weight: .semibold)
-        l.textColor = .black
+        l.textColor = UIColor.mbPrimaryText
         l.numberOfLines = 0
         return l
     }()

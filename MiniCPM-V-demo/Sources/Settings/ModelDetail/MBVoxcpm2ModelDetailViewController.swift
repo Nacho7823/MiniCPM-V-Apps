@@ -95,7 +95,7 @@ import SnapKit
     func setupSubViews() {
         self.title = modelName
 
-        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.black]
+        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.label]
         self.navigationController?.navigationBar.titleTextAttributes = titleDict
         self.view.backgroundColor = UIColor.mb_color(with: "#F9FAFC")
 
@@ -129,7 +129,7 @@ import SnapKit
                                           style: .plain,
                                           target: self,
                                           action: #selector(handleLeftNavIcon))
-        leftNavIcon.tintColor = .black
+        leftNavIcon.tintColor = UIColor.mbIconTint
         self.navigationItem.leftBarButtonItem = leftNavIcon
 
         let refreshImg = UIImage(systemName: "arrow.clockwise")
@@ -137,7 +137,7 @@ import SnapKit
                                             style: .plain,
                                             target: self,
                                             action: #selector(handleRightNavButton))
-        rightNavButton.tintColor = .black
+        rightNavButton.tintColor = UIColor.mbIconTint
         self.navigationItem.rightBarButtonItem = rightNavButton
 
         self.navigationController?.setNavigationBackgroundColor(UIColor.mb_color(with: "#F9FAFC") ?? .white)

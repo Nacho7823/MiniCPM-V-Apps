@@ -21,7 +21,10 @@ extension MBHomeViewController {
                 }
                 
                 self.inputRoundCornerView.layer.borderWidth = 1.0 / UIScreen.main.scale
-                self.inputRoundCornerView.layer.borderColor = UIColor.mb_color(with: "#108DED")?.cgColor
+                // layer.borderColor 是 CGColor —— 动态色在这里会**立刻解析**，不随外观变化，
+                // 所以必须用当前 trait 解析一次。外观切换时由 traitCollectionDidChange 重设。
+                self.inputRoundCornerView.layer.borderColor = UIColor.mb_color(with: "#108DED")?
+                    .resolvedColor(with: self.traitCollection).cgColor
                 
                 // 输入时，背景色为白色
                 self.inputContainerView.backgroundColor = UIColor.white.withAlphaComponent(0.02)

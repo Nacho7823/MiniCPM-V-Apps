@@ -75,7 +75,7 @@ class MBFloatingActionView: UIView {
 
         self.clipsToBounds = true
         self.layer.cornerRadius = 16
-        self.backgroundColor = .white
+        self.backgroundColor = UIColor.mbCardBackground
         
         addSubview(iconImageView)
         iconImageView.snp.makeConstraints { make in

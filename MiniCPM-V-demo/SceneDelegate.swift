@@ -19,6 +19,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
         self.window = UIWindow(windowScene: windowScene)
+        // 先套用外观偏好，再上根视图 —— 否则暗色下启动会先闪一帧白。
+        self.window?.overrideUserInterfaceStyle = MBTheme.current.userInterfaceStyle
         let vc = MBHomeViewController()
         nav = UINavigationController(rootViewController: vc)
         self.window?.rootViewController = nav

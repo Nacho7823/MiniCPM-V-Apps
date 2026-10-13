@@ -103,7 +103,7 @@ import llama
     func setupSubViews() {
         self.title = modelName
         
-        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.black]
+        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.label]
         self.navigationController?.navigationBar.titleTextAttributes = titleDict
         self.view.backgroundColor = UIColor.mb_color(with: "#F9FAFC")
         
@@ -137,7 +137,7 @@ import llama
                                           style: .plain,
                                           target: self,
                                           action: #selector(handleLeftNavIcon))
-        leftNavIcon.tintColor = .black
+        leftNavIcon.tintColor = UIColor.mbIconTint
         self.navigationItem.leftBarButtonItem = leftNavIcon
         
         let refreshImg = UIImage(systemName: "arrow.clockwise")
@@ -145,7 +145,7 @@ import llama
                                             style: .plain,
                                             target: self,
                                             action: #selector(handleRightNavButton))
-        rightNavButton.tintColor = .black
+        rightNavButton.tintColor = UIColor.mbIconTint
         rightNavButton.accessibilityLabel = L.ModelDetail.redownloadA11yLabel.loc
         rightNavButton.accessibilityHint = L.ModelDetail.redownloadA11yHint.loc
         self.navigationItem.rightBarButtonItem = rightNavButton

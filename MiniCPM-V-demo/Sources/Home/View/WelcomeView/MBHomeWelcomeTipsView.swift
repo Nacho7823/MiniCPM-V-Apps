@@ -58,7 +58,7 @@ class MBHomeWelcomeTipsView: UIView {
     /// 设置视图和其子视图的布局和样式
     private func setupView() {
         
-        self.backgroundColor = .white
+        self.backgroundColor = UIColor.mbCardBackground
         self.layer.cornerRadius = 16
         
         addSubview(iconImageView)

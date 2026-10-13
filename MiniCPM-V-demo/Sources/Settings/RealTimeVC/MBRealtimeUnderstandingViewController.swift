@@ -52,8 +52,8 @@ class MBRealtimeUnderstandingViewController: UIViewController {
         let tv = UITextView()
         tv.font = UIFont.systemFont(ofSize: 16)
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        tv.textColor = .black
-        tv.backgroundColor = .white
+        tv.textColor = UIColor.mbPrimaryText
+        tv.backgroundColor = UIColor.mbCardBackground
         tv.layer.cornerRadius = 8
         tv.layer.masksToBounds = true
         return tv
@@ -63,8 +63,8 @@ class MBRealtimeUnderstandingViewController: UIViewController {
         let tv = UITextView()
         tv.font = UIFont.systemFont(ofSize: 16)
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        tv.textColor = .black
-        tv.backgroundColor = .white
+        tv.textColor = UIColor.mbPrimaryText
+        tv.backgroundColor = UIColor.mbCardBackground
         tv.layer.cornerRadius = 8
         tv.layer.masksToBounds = true
         return tv
@@ -85,7 +85,7 @@ class MBRealtimeUnderstandingViewController: UIViewController {
     lazy var questionGapTextField: UITextField = {
         let tv = UITextField()
         tv.font = UIFont.systemFont(ofSize: 16)
-        tv.textColor = .black
+        tv.textColor = UIColor.mbPrimaryText
         tv.backgroundColor = UIColor.mb_color(with: "#F0F0F0")
         tv.layer.cornerRadius = 8
         tv.layer.masksToBounds = true
@@ -109,7 +109,7 @@ class MBRealtimeUnderstandingViewController: UIViewController {
     lazy var drawFPSPickerTextField: UITextField = {
         let tf = UITextField()
         tf.font = UIFont.systemFont(ofSize: 16)
-        tf.textColor = .black
+        tf.textColor = UIColor.mbPrimaryText
         tf.backgroundColor = UIColor.mb_color(with: "#F0F0F0")
         tf.layer.cornerRadius = 8
         tf.layer.masksToBounds = true
@@ -152,7 +152,7 @@ class MBRealtimeUnderstandingViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.view.backgroundColor = .white
+        self.view.backgroundColor = UIColor.mbPageBackground
         
         setupNav()
         
@@ -235,7 +235,7 @@ class MBRealtimeUnderstandingViewController: UIViewController {
         self.navigationController?.setNavigationBackgroundColor(UIColor.mb_color(with: "#FFFFFF") ?? .white)
         
         self.title = L.Realtime.title.loc
-        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.black]
+        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.label]
         self.navigationController?.navigationBar.titleTextAttributes = titleDict
         
         // 返回按钮
@@ -244,7 +244,7 @@ class MBRealtimeUnderstandingViewController: UIViewController {
                                           style: .plain,
                                           target: self,
                                           action: #selector(handleLeftNavIcon))
-        leftNavIcon.tintColor = .black
+        leftNavIcon.tintColor = UIColor.mbIconTint
         self.navigationItem.leftBarButtonItem = leftNavIcon
         
         // 删除所有

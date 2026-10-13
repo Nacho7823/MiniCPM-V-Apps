@@ -667,7 +667,7 @@ class MBTextTableViewCell: UITableViewCell {
             let font: UIFont = UIFont.systemFont(ofSize: 16, weight: .regular)
             
             let attributes: [NSAttributedString.Key: Any] = [
-                .foregroundColor: UIColor.black,
+                .foregroundColor: UIColor.label,
                 .font: font,
                 .paragraphStyle: para
             ]

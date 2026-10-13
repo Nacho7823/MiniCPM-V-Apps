@@ -82,12 +82,12 @@ enum MarkdownRenderer {
                 let codePara = NSMutableParagraphStyle()
                 codePara.lineSpacing = 2
                 codePara.lineBreakMode = .byWordWrapping
-                let codeAttrs: [NSAttributedString.Key: Any] = [
-                    .font: codeFont,
-                    .foregroundColor: UIColor(red: 0.12, green: 0.14, blue: 0.16, alpha: 1.0),
-                    .backgroundColor: UIColor(red: 0.95, green: 0.96, blue: 0.97, alpha: 1.0),
-                    .paragraphStyle: codePara
-                ]
+            let codeAttrs: [NSAttributedString.Key: Any] = [
+                .font: codeFont,
+                .foregroundColor: UIColor.mb_color(with: "#1F2429") ?? .label,
+                .backgroundColor: UIColor.mb_color(with: "#F2F5F7") ?? .secondarySystemBackground,
+                .paragraphStyle: codePara
+            ]
                 result.append(NSAttributedString(string: block.raw, attributes: codeAttrs))
 
             case .listItem:
@@ -560,11 +560,11 @@ enum MarkdownRenderer {
             case .code:
                 let codeFont = UIFont(name: "Menlo", size: baseFont.pointSize - 1)
                     ?? UIFont.monospacedSystemFont(ofSize: baseFont.pointSize - 1, weight: .regular)
-                let attrs = mergedAttributes(base: baseAttributes, overrides: [
-                    .font: codeFont,
-                    .foregroundColor: UIColor(red: 0.78, green: 0.15, blue: 0.30, alpha: 1.0),
-                    .backgroundColor: UIColor(red: 0.97, green: 0.93, blue: 0.94, alpha: 1.0)
-                ])
+            let attrs = mergedAttributes(base: baseAttributes, overrides: [
+                .font: codeFont,
+                .foregroundColor: UIColor.mb_color(with: "#C7264D") ?? .label,
+                .backgroundColor: UIColor.mb_color(with: "#F7EDF0") ?? .tertiarySystemBackground
+            ])
                 result.append(NSAttributedString(string: span.text, attributes: attrs))
 
             case .strikethrough:

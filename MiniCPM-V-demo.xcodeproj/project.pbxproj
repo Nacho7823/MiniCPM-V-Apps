@@ -61,6 +61,7 @@
 		FA9AB0022F03000200E00002 /* MiniCPMV46CoreMLBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9AB0012F03000100E00001 /* MiniCPMV46CoreMLBootstrap.swift */; };
 		FA9AB0112F03000200E00011 /* MarkdownEscape.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9AB0102F03000200E00010 /* MarkdownEscape.swift */; };
 		FA9AB0152F03000200E00015 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9AB0142F03000200E00014 /* MarkdownRenderer.swift */; };
+		E658CCB1FBEEB254EE41C8B4 /* MBTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E59342FECDF84634900BB3 /* MBTheme.swift */; };
 		FA9AB0212F03000200E00021 /* ImageSliceSetting.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9AB0202F03000200E00020 /* ImageSliceSetting.swift */; };
 		FA9AB0312F03000200E00031 /* MBImageSliceSettingAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9AB0302F03000200E00030 /* MBImageSliceSettingAlert.swift */; };
 		FA9C4B5B2C227A2C000D9BC4 /* MBHomeViewController+CheckSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9C4B5A2C227A2C000D9BC4 /* MBHomeViewController+CheckSupport.swift */; };
@@ -205,6 +206,7 @@
 		FA9AB0012F03000100E00001 /* MiniCPMV46CoreMLBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniCPMV46CoreMLBootstrap.swift; sourceTree = "<group>"; };
 		FA9AB0102F03000200E00010 /* MarkdownEscape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEscape.swift; sourceTree = "<group>"; };
 		FA9AB0142F03000200E00014 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		E9E59342FECDF84634900BB3 /* MBTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBTheme.swift; sourceTree = "<group>"; };
 		FA9AB0202F03000200E00020 /* ImageSliceSetting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageSliceSetting.swift; sourceTree = "<group>"; };
 		FA9AB0302F03000200E00030 /* MBImageSliceSettingAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MBImageSliceSettingAlert.swift; sourceTree = "<group>"; };
 		FA9C4B5A2C227A2C000D9BC4 /* MBHomeViewController+CheckSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MBHomeViewController+CheckSupport.swift"; sourceTree = "<group>"; };
@@ -691,6 +693,7 @@
 				DD9DD7843ABE4A64A84DDE09 /* MBDeviceMemoryProbe.swift */,
 				FA9AB0102F03000200E00010 /* MarkdownEscape.swift */,
 				FA9AB0142F03000200E00014 /* MarkdownRenderer.swift */,
+				E9E59342FECDF84634900BB3 /* MBTheme.swift */,
 				FA9AB0202F03000200E00020 /* ImageSliceSetting.swift */,
 				FEF10004AAAAABBBCCCCDDDD04 /* MBAudioRecorder.swift */,
 				FEF10005AAAAABBBCCCCDDDD05 /* MBAudioPlayer.swift */,
@@ -983,6 +986,7 @@
 				FA49BA132F080001005660C4 /* MBModelArtifactStore.swift in Sources */,
 				FA9AB0112F03000200E00011 /* MarkdownEscape.swift in Sources */,
 				FA9AB0152F03000200E00015 /* MarkdownRenderer.swift in Sources */,
+				E658CCB1FBEEB254EE41C8B4 /* MBTheme.swift in Sources */,
 				FA9AB0212F03000200E00021 /* ImageSliceSetting.swift in Sources */,
 				FAE6DA562E210D2700A1E14F /* MBCLIPMetadataProbe.swift in Sources */,
 				FA9AB0312F03000200E00031 /* MBImageSliceSettingAlert.swift in Sources */,

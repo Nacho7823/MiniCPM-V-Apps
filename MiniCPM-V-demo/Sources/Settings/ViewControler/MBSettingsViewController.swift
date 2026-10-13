@@ -121,7 +121,7 @@ import llama
     func setupSubViews() {
         self.title = L.Settings.title.loc
         
-        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.black]
+        let titleDict: [NSAttributedString.Key : Any] = [NSAttributedString.Key.foregroundColor: UIColor.label]
         self.navigationController?.navigationBar.titleTextAttributes = titleDict
 
         self.view.backgroundColor = UIColor.mb_color(with: "#F9FAFC")
@@ -148,7 +148,7 @@ import llama
                                           style: .plain,
                                           target: self,
                                           action: #selector(handleLeftNavIcon))
-        leftNavIcon.tintColor = .black
+        leftNavIcon.tintColor = UIColor.mbIconTint
         self.navigationItem.leftBarButtonItem = leftNavIcon
         
         // 白色顶导
@@ -203,7 +203,7 @@ extension MBSettingsViewController: UITableViewDataSource {
         headerView.backgroundColor = UIColor.mb_color(with: "#F6F6F6")
         
         let titleLabel = UILabel()
-        titleLabel.textColor = UIColor.black
+        titleLabel.textColor = UIColor.mbPrimaryText
         titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
         titleLabel.textAlignment = .left
         
@@ -326,6 +326,44 @@ extension MBSettingsViewController: UITableViewDelegate {
         }
     }
 
+    /// 夜间模式三档选择。
+    ///
+    /// 选完立即调用 `MBTheme.apply()` 切窗口外观 —— UIKit 会重解析所有动态色并触发
+    /// `traitCollectionDidChange`，所以不需要重建页面。
+    private func showAppearancePicker() {
+        let sheet = UIAlertController(title: L.Settings.appearanceTitle.loc,
+                                      message: nil,
+                                      preferredStyle: .actionSheet)
+        for option in MBAppearance.allCases {
+            let isCurrent = (option == MBTheme.current)
+            let title = option.displayNameKey + (isCurrent ? "  ✓" : "")
+            sheet.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+                MBTheme.current = option
+                MBTheme.apply()
+                DispatchQueue.main.async { self?.loadTableViewData() }
+            })
+        }
+        sheet.addAction(UIAlertAction(title: L.Common.cancel.loc, style: .cancel))
+
+        // iPad 上 actionSheet 必须挂 popover，否则直接崩。
+        if let pop = sheet.popoverPresentationController {
+            let row = indexPathForAppearanceRow()
+            pop.sourceView = self.tableView
+            pop.sourceRect = row.map { self.tableView.rectForRow(at: $0) }
+                ?? CGRect(x: self.tableView.bounds.midX, y: self.tableView.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func indexPathForAppearanceRow() -> IndexPath? {
+        for (section, rows) in dataArray.enumerated() {
+            if let row = rows.firstIndex(where: { $0.title == L.Settings.rowAppearance.loc }) {
+                return IndexPath(row: row, section: section)
+            }
+        }
+        return nil
+    }
+
     /// 4.7 的「专家槽位（slot bank）」设置行：点开弹滑条。
     ///
     /// 原先它挂在「点击 MoE 模型」的流程里，现在模型点击直接进下载/详情页，
@@ -363,6 +401,8 @@ extension MBSettingsViewController: UITableViewDelegate {
             presentPrewarmPicker()
         } else if title == L.Settings.rowSlotBank.loc {
             presentV47SlotBankPicker()
+        } else if title == L.Settings.rowAppearance.loc {
+            showAppearancePicker()
         } else if title == L.Realtime.title.loc {
             showRealtimeUnderstandingPage()
         }
@@ -798,6 +838,14 @@ extension MBSettingsViewController {
             DispatchQueue.main.async { self?.loadTableViewData() }
         }
         section.append(liveTpsModel)
+
+        // 夜间模式：跟随系统 / 始终开启 / 始终关闭。改完即时生效，不用重载模型。
+        let appearanceModel = MBSettingsModel()
+        appearanceModel.title = L.Settings.rowAppearance.loc
+        appearanceModel.icon = UIImage(systemName: "moon.stars")
+        appearanceModel.accessoryIcon = UIImage(named: "setting_accessory_icon")
+        appearanceModel.detailText = MBTheme.current.displayNameKey
+        section.append(appearanceModel)
 
         // 实时渲染 Markdown 开关：**当前隐藏**（暂时不暴露该入口，代码保留，恢复时解注释即可）。
         // 默认关（流式期间纯文本，整段完成后一次上样式）；打开后走增量解析边生成边上样式，无需重载模型。

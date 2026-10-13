@@ -80,7 +80,7 @@ import SnapKit
         let titleLabel = UILabel()
         titleLabel.text = L.Tutorial.headerTitle.loc
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
-        titleLabel.textColor = .black
+        titleLabel.textColor = UIColor.mbPrimaryText
         titleLabel.numberOfLines = 0
 
         let subtitleLabel = UILabel()

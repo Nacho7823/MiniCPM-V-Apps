@@ -178,13 +178,13 @@ import llama
         let img = UIImage(systemName: "chevron.left")
         let leftNavIcon = UIBarButtonItem(image: img, style: .plain,
                                           target: self, action: #selector(handleLeftNavIcon))
-        leftNavIcon.tintColor = .black
+        leftNavIcon.tintColor = UIColor.mbIconTint
         self.navigationItem.leftBarButtonItem = leftNavIcon
 
         let refreshImg = UIImage(systemName: "arrow.clockwise")
         let rightBtn = UIBarButtonItem(image: refreshImg, style: .plain,
                                        target: self, action: #selector(handleRightNavButton))
-        rightBtn.tintColor = .black
+        rightBtn.tintColor = UIColor.mbIconTint
         rightBtn.accessibilityLabel = L.ModelDetail.redownloadA11yLabel.loc
         rightBtn.accessibilityHint = L.ModelDetail.redownloadA11yHint.loc
         self.navigationItem.rightBarButtonItem = rightBtn

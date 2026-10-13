@@ -49,7 +49,7 @@ class MBSettingsTableViewCell: UITableViewCell {
     
     private func setupViews() {
         // 配置 iconImageView
-        contentView.backgroundColor = .white
+        contentView.backgroundColor = UIColor.mbCardBackground
         
         iconImageView.clipsToBounds = true
         contentView.addSubview(iconImageView)
@@ -60,7 +60,7 @@ class MBSettingsTableViewCell: UITableViewCell {
         }
         
         // 配置 titleLabel
-        titleLabel.textColor = .black
+        titleLabel.textColor = UIColor.mbPrimaryText
         titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
         contentView.addSubview(titleLabel)
         titleLabel.snp.makeConstraints { make in
@@ -159,8 +159,8 @@ class MBSettingsTableViewCell: UITableViewCell {
             return
         }
         
-        iconImageView.tintColor = .black
-        titleLabel.textColor = .black
+        iconImageView.tintColor = UIColor.mbIconTint
+        titleLabel.textColor = UIColor.mbPrimaryText
         statusLabel.textColor = UIColor.mb_color(with: "#007AFF")
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         
@@ -183,7 +183,7 @@ class MBSettingsTableViewCell: UITableViewCell {
                 statusLabel.isHidden = false
 
                 accessoryImageView.image = model.accessoryIcon
-                accessoryImageView.tintColor = .black
+                accessoryImageView.tintColor = UIColor.mbIconTint
                 accessoryImageView.isHidden = (model.accessoryIcon == nil)
 
                 // 若同时要显示下载状态，则两者并排：文件大小在左、状态在右。
@@ -230,7 +230,7 @@ class MBSettingsTableViewCell: UITableViewCell {
                 debugLog("-->> Cell: 设置选中状态，statusString: \(model.statusString ?? "nil")")
                 accessoryImageView.isHidden = false
                 accessoryImageView.image = model.selectedIcon
-                accessoryImageView.tintColor = .black
+                accessoryImageView.tintColor = UIColor.mbIconTint
                 
                 // 恢复 statusLabel 的原始约束
                 statusLabel.snp.remakeConstraints { make in
@@ -252,7 +252,7 @@ class MBSettingsTableViewCell: UITableViewCell {
             } else if let acc = model.accessoryIcon {
                 // 显示箭头图标
                 accessoryImageView.image = acc
-                accessoryImageView.tintColor = .black
+                accessoryImageView.tintColor = UIColor.mbIconTint
                 accessoryImageView.isHidden = false
                 statusLabel.isHidden = true
                 
@@ -266,7 +266,7 @@ class MBSettingsTableViewCell: UITableViewCell {
             } else {
                 // 默认状态：只显示箭头图标，不显示状态文字
                 accessoryImageView.image = model.accessoryIcon
-                accessoryImageView.tintColor = .black
+                accessoryImageView.tintColor = UIColor.mbIconTint
                 accessoryImageView.isHidden = false
                 statusLabel.isHidden = true
                 
