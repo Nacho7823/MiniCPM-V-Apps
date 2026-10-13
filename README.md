@@ -45,7 +45,13 @@ The README is organised in two parts:
 
 ---
 
-> **Just want to install the app?** Pre-built TestFlight (iOS) / APK (Android) / HAP (HarmonyOS) packages and step-by-step install instructions are in **[DOWNLOAD.md](DOWNLOAD.md)**. The rest of this README is only needed if you want to build from source.
+> **Just want to install the app?** Pre-built packages are below; step-by-step instructions (requirements, signing notes, MD5) are in **[DOWNLOAD.md](DOWNLOAD.md)**. The rest of this README is only needed if you want to build from source.
+
+| Platform | Install |
+| --- | --- |
+| 🍎 **iOS / iPadOS** | [TestFlight — public link](https://testflight.apple.com/join/yNKyFZwW) |
+| 🤖 **Android** | [APK — latest release](https://github.com/OpenBMB/MiniCPM-V-Apps/releases/latest) |
+| 📱 **HarmonyOS** | [HAP — latest release](https://github.com/OpenBMB/MiniCPM-V-Apps/releases/latest) |
 
 ---
 

@@ -45,7 +45,13 @@ README 分为两大部分：
 
 ---
 
-> **只想安装 App？** TestFlight（iOS）/ APK（Android）/ HAP（HarmonyOS）的预编译安装包与详细安装步骤请见 **[DOWNLOAD_zh.md](DOWNLOAD_zh.md)**。下面的内容只在你打算从源码自行构建时才需要。
+> **只想安装 App？** 预编译安装包见下表；详细步骤（要求、签名说明、MD5）在 **[DOWNLOAD_zh.md](DOWNLOAD_zh.md)**。下面的内容只在你打算从源码自行构建时才需要。
+
+| 平台 | 安装 |
+| --- | --- |
+| 🍎 **iOS / iPadOS** | [TestFlight — 公开链接](https://testflight.apple.com/join/yNKyFZwW) |
+| 🤖 **Android** | [APK — 最新 release](https://github.com/OpenBMB/MiniCPM-V-Apps/releases/latest) |
+| 📱 **HarmonyOS** | [HAP — 最新 release](https://github.com/OpenBMB/MiniCPM-V-Apps/releases/latest) |
 
 ---
 

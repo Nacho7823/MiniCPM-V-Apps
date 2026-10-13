@@ -27,8 +27,6 @@
 
 **TestFlight 公开链接：** [https://testflight.apple.com/join/yNKyFZwW](https://testflight.apple.com/join/yNKyFZwW)
 
-> **注意：** iOS 发版会比安卓 / 鸿蒙稍慢。每个 iOS 版本都需先通过 Apple TestFlight 的审核才能交付给用户，因此 iOS 上的新功能和缺陷修复通常会**比安卓 APK 和鸿蒙 HAP 版本晚数天到一两周**。如需立即体验最新修复，请使用本页面的安卓或鸿蒙安装包。
-
 ### 系统要求
 
 - 运行 **iOS / iPadOS 16 及以上**的 iPhone 或 iPad

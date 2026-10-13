@@ -27,8 +27,6 @@ All packages target **64-bit ARM** (`arm64-v8a`).
 
 **Public TestFlight link:** [https://testflight.apple.com/join/yNKyFZwW](https://testflight.apple.com/join/yNKyFZwW)
 
-> **NOTE:** iOS ships slower than Android / HarmonyOS. Every iOS build must clear Apple's TestFlight review before reaching users, so new features and bug fixes on iOS typically land **several days to a couple of weeks behind** the Android APK and HarmonyOS HAP releases. If you need the latest fix immediately, please use the Android or HarmonyOS package on this page.
-
 ### Requirements
 
 - iPhone or iPad running **iOS / iPadOS 16 or later**
