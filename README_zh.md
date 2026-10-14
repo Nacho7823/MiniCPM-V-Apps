@@ -63,7 +63,7 @@ README 分为两大部分：
 
 #### 1.1.1 安装 Xcode 与命令行工具
 
-* 在 App Store 下载 Xcode（已在 Xcode 26.1 上验证；项目 deployment target = iOS 16.4）
+* 在 App Store 下载 Xcode（已在 Xcode 26.1.1 上验证；项目 deployment target = iOS 16.6）
 * 安装 Command Line Tools：
 
   ```bash
@@ -90,22 +90,21 @@ README 分为两大部分：
 
 完成后产物落在 `MiniCPM-V-demo/thirdparty/llama.xcframework/`。
 
-如果你想自己控制 build 范围（例如只 build 模拟器或全平台），脚本通过 `MINIMAL_MODE` 环境变量切换：
+如果你想自己控制 build 范围，脚本通过 `MINIMAL_MODE` 环境变量切换：
 
 ```bash
 MINIMAL_MODE=ios-sim    ./scripts/build_xcframework.sh   # 只模拟器 (~3 min)
 MINIMAL_MODE=ios-device ./scripts/build_xcframework.sh   # 只真机   (~3 min)
 MINIMAL_MODE=ios        ./scripts/build_xcframework.sh   # 真机+模拟器（默认，~3 min）
-MINIMAL_MODE=all        ./scripts/build_xcframework.sh   # iOS + macOS + tvOS + xrOS 全平台 (~25 min)
+MINIMAL_MODE=macos      ./scripts/build_xcframework.sh   # 只 macOS 切片（本 demo 用不到）
 ```
 
-等价的手工命令（不走脚本时）：
+> 本 demo 只链接 iOS 切片（真机 + 模拟器），上面默认档就够了。`macos` 是给 Mac 侧 CLI 用的
+> 独立档位；`all` 目前与 `ios` 等价（脚本里走同一分支），不是「全平台」。
 
-```bash
-cd llama.cpp-omni
-MINIMAL_MODE=ios ./build-xcframework.sh
-cp -r ./build-apple/llama.xcframework ../MiniCPM-V-demo/thirdparty/
-```
+脚本内部**直接调 cmake** 编译 `llama.cpp-omni` 子模块（不修改子模块里任何文件），再把产物
+`llama.cpp-omni/build-apple/llama.xcframework` 复制到 `MiniCPM-V-demo/thirdparty/`。子模块里
+**没有**现成的构建脚本，需要自定义编译参数时请直接读 `scripts/build_xcframework.sh`。
 
 Build 过程中会出现 `ignoring duplicate libraries` 和 `skipping debug map object with duplicate name and timestamp` 的 warning —— 这是 llama.cpp 上游 mtmd 模块在不同 model arch 下同名 `.o` 的去重提示，**无害**，产物正常。
 
@@ -115,7 +114,15 @@ Build 过程中会出现 `ignoring duplicate libraries` 和 `skipping debug map 
 
 #### 1.1.3 用 Xcode 打开并运行
 
-用 Xcode 打开 `MiniCPM-V-demo/MiniCPM-V-demo.xcodeproj`，等待 Xcode 自动下载所需依赖。在顶部选择目标设备，点击 "Run"（三角形）按钮启动 demo。
+用 Xcode 打开**仓库根目录**的 `MiniCPM-V-demo.xcodeproj`（不在 `MiniCPM-V-demo/` 子目录里），等待 Xcode 自动下载所需依赖。
+
+1. **换成你自己的签名团队。** 选中 `MiniCPM-V-demo` target → `Signing & Capabilities`，把
+   `Team` 改成你自己的账号。仓库里带的是作者的 Team ID，不改会直接签名失败。
+2. **在设备上开启开发者模式。** iOS / iPadOS 16 及以上必须先手动打开，否则装不上：
+   `设置 → 隐私与安全性 → 开发者模式`。
+3. 顶部选择目标设备，点击 "Run"（三角形）按钮启动 demo。
+4. 首次启动后进入 **设置 → 模型管理**，选目标模型点 **一键下载**，下载完点 **使用此模型**
+   激活。模型文件与落盘路径见 §2.4。
 
 如果 build 报 `There is no XCFramework found at '.../llama.xcframework'`，说明你跳过了 §1.1.2，回到上一步执行 build。
 

@@ -63,7 +63,7 @@ The README is organised in two parts:
 
 #### 1.1.1 Install Xcode & command-line tools
 
-* Download Xcode from the App Store (verified on Xcode 26.1; project deployment target = iOS 16.4)
+* Download Xcode from the App Store (verified on Xcode 26.1.1; project deployment target = iOS 16.6)
 * Install the Command Line Tools:
 
   ```bash
@@ -90,22 +90,23 @@ This repo **does not track** any compiled artefacts, so the prebuilt `llama.xcfr
 
 The output is installed at `MiniCPM-V-demo/thirdparty/llama.xcframework/`.
 
-If you need a different build scope (simulator-only, full multi-platform, …), the script forwards `MINIMAL_MODE`:
+If you need a different build scope, the script forwards `MINIMAL_MODE`:
 
 ```bash
 MINIMAL_MODE=ios-sim    ./scripts/build_xcframework.sh   # simulator only        (~3 min)
 MINIMAL_MODE=ios-device ./scripts/build_xcframework.sh   # device only           (~3 min)
 MINIMAL_MODE=ios        ./scripts/build_xcframework.sh   # device + simulator (default, ~3 min)
-MINIMAL_MODE=all        ./scripts/build_xcframework.sh   # iOS + macOS + tvOS + xrOS (~25 min)
+MINIMAL_MODE=macos      ./scripts/build_xcframework.sh   # macOS slice only      (not used by this demo)
 ```
 
-The equivalent manual commands, if you'd rather not use the script:
+> This demo only links the iOS slices (device + simulator), so the default is all you need. `macos` is a
+> separate mode for the Mac-side CLI; `all` currently behaves identically to `ios` (same branch in the
+> script), it is **not** a multi-platform build.
 
-```bash
-cd llama.cpp-omni
-MINIMAL_MODE=ios ./build-xcframework.sh
-cp -r ./build-apple/llama.xcframework ../MiniCPM-V-demo/thirdparty/
-```
+The script drives **cmake directly** against the `llama.cpp-omni` submodule (it modifies no file inside
+it), then copies the resulting `llama.cpp-omni/build-apple/llama.xcframework` into
+`MiniCPM-V-demo/thirdparty/`. There is **no** pre-existing build script inside the submodule — if you
+need custom compile flags, read `scripts/build_xcframework.sh`.
 
 During the build you will see warnings like `ignoring duplicate libraries` and `skipping debug map object with duplicate name and timestamp` — these come from llama.cpp's mtmd module having identically-named `.o` files across different model architectures. They are **harmless** and the resulting framework works correctly.
 
@@ -115,7 +116,16 @@ During the build you will see warnings like `ignoring duplicate libraries` and `
 
 #### 1.1.3 Open in Xcode and run
 
-Open `MiniCPM-V-demo/MiniCPM-V-demo.xcodeproj` with Xcode. It may take a moment for Xcode to automatically download the required dependencies. Select the target device at the top, then click the "Run" (triangle) button to launch the demo.
+Open `MiniCPM-V-demo.xcodeproj` at the **repository root** (it is not under the `MiniCPM-V-demo/` subdirectory). It may take a moment for Xcode to automatically download the required dependencies.
+
+1. **Switch to your own signing team.** Select the `MiniCPM-V-demo` target → `Signing & Capabilities`
+   and change `Team` to your own account. The repo ships with the author's Team ID, so building without
+   changing it fails to sign.
+2. **Enable Developer Mode on the device.** Required on iOS / iPadOS 16 and later, otherwise
+   installation is rejected: `Settings → Privacy & Security → Developer Mode`.
+3. Select the target device at the top, then click the "Run" (triangle) button to launch the demo.
+4. On first launch, go to **Settings → Model Management**, tap **Download All** for the model you want,
+   then **Use This Model** to activate it. See §2.4 for the files and their on-device locations.
 
 If Xcode fails with `There is no XCFramework found at '.../llama.xcframework'`, you skipped §1.1.2 — go back and run the build.
 
