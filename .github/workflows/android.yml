@@ -43,14 +43,14 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK (arm64-v8a)
+      - name: Build release APK (arm64-v8a)
         working-directory: MiniCPM-V-demo-Android
-        run: bash ./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2
+        run: bash ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: MiniCPM-V-Android-debug
-          path: MiniCPM-V-demo-Android/app/build/outputs/apk/debug/*.apk
+          name: MiniCPM-V-Android-release
+          path: MiniCPM-V-demo-Android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 7
