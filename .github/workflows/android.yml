@@ -53,6 +53,7 @@ jobs:
             echo "ORG_GRADLE_PROJECT_MINICPMV_KEY_PASSWORD=${{ secrets.MINICPMV_KEY_PASSWORD }}" >> "$GITHUB_ENV"
           else
             DEBUG_KEYSTORE="${HOME}/.android/debug.keystore"
+            mkdir -p "${HOME}/.android"
             if [ ! -f "$DEBUG_KEYSTORE" ]; then
               keytool -genkeypair -v \
                 -keystore "$DEBUG_KEYSTORE" \
