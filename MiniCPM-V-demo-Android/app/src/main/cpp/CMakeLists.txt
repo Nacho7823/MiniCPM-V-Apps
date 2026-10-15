@@ -46,6 +46,14 @@ if(NOT EXISTS ${LLAMA_SRC}/CMakeLists.txt)
 endif()
 message(STATUS "Using llama.cpp-omni source at: ${LLAMA_SRC}")
 
+# `F_NOCACHE` is a macOS fcntl command and is not defined by Android libc.
+# Define a harmless unsupported value on Android so cross-platform llama.cpp
+# code that references F_NOCACHE still compiles; runtime calls simply fail with
+# EINVAL when users explicitly enable that optional path.
+if(ANDROID)
+    add_compile_definitions(F_NOCACHE=-1)
+endif()
+
 add_subdirectory(${LLAMA_SRC} ${CMAKE_BINARY_DIR}/build-llama)
 
 if(NOT DEFINED LLAMA_INSTALL_VERSION)
