@@ -43,18 +43,35 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare release keystore
-        if: ${{ secrets.MINICPMV_KEYSTORE_B64 != '' }}
+      - name: Prepare Android signing config
         run: |
-          echo "${{ secrets.MINICPMV_KEYSTORE_B64 }}" | base64 --decode > "${RUNNER_TEMP}/minicpmv-release.keystore"
+          if [ -n "${{ secrets.MINICPMV_KEYSTORE_B64 }}" ]; then
+            echo "${{ secrets.MINICPMV_KEYSTORE_B64 }}" | base64 --decode > "${RUNNER_TEMP}/minicpmv-release.keystore"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE=${RUNNER_TEMP}/minicpmv-release.keystore" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE_PASSWORD=${{ secrets.MINICPMV_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEY_ALIAS=${{ secrets.MINICPMV_KEY_ALIAS }}" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEY_PASSWORD=${{ secrets.MINICPMV_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          else
+            DEBUG_KEYSTORE="${HOME}/.android/debug.keystore"
+            if [ ! -f "$DEBUG_KEYSTORE" ]; then
+              keytool -genkeypair -v \
+                -keystore "$DEBUG_KEYSTORE" \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -dname "CN=Android Debug,O=Android,C=US" \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000
+            fi
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE=${DEBUG_KEYSTORE}" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE_PASSWORD=android" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEY_ALIAS=androiddebugkey" >> "$GITHUB_ENV"
+            echo "ORG_GRADLE_PROJECT_MINICPMV_KEY_PASSWORD=android" >> "$GITHUB_ENV"
+          fi
 
       - name: Build release APK (arm64-v8a)
         working-directory: MiniCPM-V-demo-Android
-        env:
-          ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE: ${{ runner.temp }}/minicpmv-release.keystore
-          ORG_GRADLE_PROJECT_MINICPMV_KEYSTORE_PASSWORD: ${{ secrets.MINICPMV_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_MINICPMV_KEY_ALIAS: ${{ secrets.MINICPMV_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_MINICPMV_KEY_PASSWORD: ${{ secrets.MINICPMV_KEY_PASSWORD }}
         run: bash ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2
 
       - name: Upload release APK
